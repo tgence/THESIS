@@ -1,3 +1,4 @@
+#main.py
 import os
 import sys
 import numpy as np
@@ -16,7 +17,7 @@ from utils import compute_orientations
 CODE_DIR = os.path.dirname(os.path.abspath(__file__))    # .../THESIS/code/
 PROJECT_ROOT = os.path.dirname(CODE_DIR)                 # .../THESIS/
 DATA_PATH = os.path.join(PROJECT_ROOT, "data/")           # .../THESIS/data
-SVG_PATH = os.path.join(PROJECT_ROOT, "visual_language/") # .../THESIS/visual_language
+#SVG_PATH = os.path.join(PROJECT_ROOT, "visual_language/") # .../THESIS/visual_language
 
 MATCH_ID = "J03WN1"
 
@@ -214,4 +215,3 @@ if __name__ == '__main__':
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())
-

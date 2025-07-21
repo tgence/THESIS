@@ -1,3 +1,5 @@
+# pitch_widget.py
+
 import numpy as np
 import math
 from PyQt5.QtWidgets import QWidget, QGraphicsScene, QGraphicsView, QVBoxLayout, QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem, QGraphicsRectItem, QGraphicsItemGroup
@@ -217,5 +219,4 @@ class PitchWidget(QWidget):
         )
         ball.setZValue(100)
         return ball
-
 
