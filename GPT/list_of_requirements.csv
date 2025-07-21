@@ -1,0 +1,37 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 Feature Category;Feature ID;Feature Title;Description;Why It Matters;Priority\
+System Functionality;SF01;Diagram Save/Load;Save and reopen any tactical diagram, including player arrangements and annotations;Allows users to iteratively build and refine tactical setups;High\
+System Functionality;SF02;Undo/Redo;Step backward or forward through changes to diagrams;Supports error recovery and experimentation;High\
+System Functionality;SF03;Tablet Optimization;User interface and controls are optimized for tablet use (landscape/portrait);Ensures intuitive touch interaction for coaches/analysts;High\
+System Functionality;SF04;Split Screen View;Display and edit two tactical diagrams side by side;Enables phase comparison and tactical alternatives;High\
+System Functionality;SF05;Zoom & Pan Controls;Zoom and pan around the pitch;Allows focusing on specific zones and detailed discussion;Medium\
+System Functionality;SF06;Predefined Formations;Quickly load common team formations from a menu;Saves time and aids standard tactical communication;Medium\
+System Functionality;SF07;Custom Formation Builder;Drag and drop players to create and save custom team shapes;Supports flexibility for user-specific tactical ideas;High\
+\
+Player & Team Data;PT01;Player Identity;Each player shows name, number, preferred position, and team color;Improves clarity and supports professional tactical discussion;High\
+Player & Team Data;PT02;Drag-and-Drop Assignment;Assign and reposition players by dragging tokens on the pitch;Enables intuitive and fast lineup creation;High\
+Player & Team Data;PT03;Player Group Selection;Select and move multiple players at once (by lasso/shape);Accelerates tactical rearrangement for units (defense, midfield, etc.);Medium\
+\
+Visual Language & Annotation;VL01;Movement Arrows;Draw arrows to indicate runs, passes, or directions;Conveys tactical instructions clearly;High\
+Visual Language & Annotation;VL02;Zones & Areas;Mark zones (e.g. pressing areas, danger zones) on the pitch;Visualizes spatial concepts and tactical plans;Medium\
+Visual Language & Annotation;VL03;Freehand Drawing Tool;Draw free shapes, circles, or highlights;Provides flexibility for creative tactical ideas;Medium\
+Visual Language & Annotation;VL04;Erase Annotation Tool;Delete selected annotations or clear all;Keeps diagrams clean and reduces clutter;High\
+Visual Language & Annotation;VL05;Snap-to-Grid;Align player positions or drawings to a virtual grid;Ensures neat, realistic tactical diagrams;Low\
+\
+Diagram Creation from Data;DD01;Data Import (CSV, JSON, TXT);Import tracking/event data to create player positions and trajectories;Bridges match data with tactical diagramming;High\
+Diagram Creation from Data;DD02;Manual vs Data-Driven Toggle;Switch between manual annotation mode and data-driven overlays;Keeps visual separation between analysis and planning;Medium\
+Diagram Creation from Data;DD03;Overlay Player Movements;Show actual player runs/positions over tactical diagrams;Enables comparison between planned and real execution;High\
+Diagram Creation from Data;DD04;Event Annotation;Mark events (e.g. passes, shots) from data files directly on pitch;Links data with tactical storytelling;Medium\
+\
+Interactive Diagram Building;ID01;Touch Interaction;Directly manipulate all diagram elements via touch;Crucial for usability on tablets;High\
+Interactive Diagram Building;ID02;Animated Player Movement (Planned);Step through sequential tactical phases (planned feature);Important for future interactive tactical storytelling;Planned\
+\
+AI & Advanced Features;AI01;AI Tactical Suggestion (Future);Suggest formations or tactical adjustments based on imported data;Potential to automate and enhance tactical planning;Future\
+\
+}

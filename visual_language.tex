@@ -1,0 +1,42 @@
+% Home Attacker (non-ball carrier)
+\begin{center}
+\begin{tikzpicture}[scale=8]
+    \draw[red, thick] (0,0) circle (0.6);
+\end{tikzpicture}
+\end{center}
+
+% Home Ball carrier
+\begin{center}
+\begin{tikzpicture}[scale=8]
+    \draw[very thick, red] (0,0) circle (0.8);
+    \draw[red, thick] (0,0) circle (0.6);
+\end{tikzpicture}
+\end{center}
+
+% Away Defender
+\begin{center}
+\begin{tikzpicture}[scale=8]
+    \node[blue, thick] at (0,0) {\Huge $\times$};
+\end{tikzpicture}
+\end{center}
+
+% Pass (arrow)
+\begin{center}
+\begin{tikzpicture}[scale=8]
+    \draw[->, thick, red] (-0.5,0) -- (2.5,0);
+\end{tikzpicture}
+\end{center}
+
+% Upside/Downside color (player style)
+\begin{center}
+\begin{tikzpicture}[scale=8]
+    \begin{scope}
+        \clip (0,0) circle (1);
+        \fill[black] (-1,-1) rectangle (1,0.1);
+        \fill[blue!70] (-1,0.1) rectangle (1,1);
+    \end{scope}
+    \fill[blue!70] (0,0) circle (0.67);
+    \draw[thick] (0,0) circle (1);
+    \node[white] at (0,0) {\Huge\bfseries 8};
+\end{tikzpicture}
+\end{center}
