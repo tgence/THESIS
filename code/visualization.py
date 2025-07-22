@@ -4,16 +4,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
 from config import *
+import xml.etree.ElementTree as ET
 
 # Constants
 COL_FACE = "lightgrey"
 plt.style.use("ggplot")
 
-# Load Data
 def load_data(path, file_name_pos, file_name_infos, file_name_events):
-    xy_objects, possession, ballstatus, teamsheets, pitch = read_position_data_xml(f"{path}{file_name_pos}", f"{path}{file_name_infos}")
+    xy_objects, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
+        f"{path}{file_name_pos}", f"{path}{file_name_infos}"
+    )
+    print(possession)
+    print(teamsheets)
     events, _, _ = read_event_data_xml(f"{path}{file_name_events}", f"{path}{file_name_infos}")
-    return xy_objects, events, pitch
+
+
+    return xy_objects, possession, events, pitch
+
 
 # Count Plot for Event IDs
 def plot_event_count(all_events):

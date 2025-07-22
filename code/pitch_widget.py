@@ -1,8 +1,9 @@
-# pitch_widget.py
-
 import numpy as np
 import math
-from PyQt5.QtWidgets import QWidget, QGraphicsScene, QGraphicsView, QVBoxLayout, QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem, QGraphicsRectItem, QGraphicsItemGroup
+from PyQt5.QtWidgets import (
+    QWidget, QGraphicsScene, QGraphicsView, QVBoxLayout, QGraphicsEllipseItem, QGraphicsPathItem, 
+    QGraphicsTextItem, QGraphicsRectItem, QGraphicsItemGroup
+)
 from PyQt5.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
 from PyQt5.QtCore import Qt
 
@@ -112,13 +113,13 @@ class PitchWidget(QWidget):
         right_arc.setPen(QPen(Qt.white, LINE_WIDTH))
         self.scene.addItem(right_arc)
         self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
+        
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, display_orientation=False, z_offset=10):
-        # 1. Draw orientation arrow only if display_orientation is True
+        # Dessin d’un joueur avec orientation
         if display_orientation:
             arrow_length = PLAYER_OUTER_RADIUS * PLAYER_ARROW_LENGTH_FACTOR
             arrow_x_end = x + arrow_length * math.cos(angle)
@@ -127,7 +128,6 @@ class PitchWidget(QWidget):
                 x, y, arrow_x_end, arrow_y_end, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
             )
             arrow.setZValue(z_offset - 2)
-
             chevron_size = PLAYER_CHEVRON_SIZE
             left_chevron_angle = angle + math.radians(PLAYER_CHEVRON_ANGLE_DEG)
             right_chevron_angle = angle - math.radians(PLAYER_CHEVRON_ANGLE_DEG)
@@ -135,21 +135,14 @@ class PitchWidget(QWidget):
             left_y = arrow_y_end + chevron_size * math.sin(left_chevron_angle)
             right_x = arrow_x_end + chevron_size * math.cos(right_chevron_angle)
             right_y = arrow_y_end + chevron_size * math.sin(right_chevron_angle)
-            left_line = self.scene.addLine(
-                arrow_x_end, arrow_y_end, left_x, left_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
-            )
-            right_line = self.scene.addLine(
-                arrow_x_end, arrow_y_end, right_x, right_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
-            )
+            left_line = self.scene.addLine(arrow_x_end, arrow_y_end, left_x, left_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS))
+            right_line = self.scene.addLine(arrow_x_end, arrow_y_end, right_x, right_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS))
             left_line.setZValue(z_offset - 2)
             right_line.setZValue(z_offset - 2)
-
-        # 2. Groupe pour tous les éléments du joueur
+        # Groupe du joueur
         group = QGraphicsItemGroup()
-
-        # Demi-cercle bas
         path_bottom = QPainterPath()
-        cx, cy, r = 0, 0, PLAYER_OUTER_RADIUS  # centered at (0,0) for group rotation
+        cx, cy, r = 0, 0, PLAYER_OUTER_RADIUS
         path_bottom.moveTo(cx, cy)
         path_bottom.arcMoveTo(cx - r, cy - r, 2*r, 2*r, 0)
         path_bottom.arcTo(cx - r, cy - r, 2*r, 2*r, 0, 180)
@@ -158,10 +151,8 @@ class PitchWidget(QWidget):
         bottom_half = QGraphicsPathItem(path_bottom)
         bottom_half.setPen(QPen(Qt.transparent, 0))
         bottom_half.setBrush(QBrush(QColor(sec_color)))
-        bottom_half.setZValue(1)
+        bottom_half.setZValue(z_offset + 1)
         group.addToGroup(bottom_half)
-
-        # Demi-cercle haut
         path_top = QPainterPath()
         path_top.moveTo(cx, cy)
         path_top.arcMoveTo(cx - r, cy - r, 2*r, 2*r, 180)
@@ -171,45 +162,31 @@ class PitchWidget(QWidget):
         top_half = QGraphicsPathItem(path_top)
         top_half.setPen(QPen(Qt.transparent, 0))
         top_half.setBrush(QBrush(QColor(main_color)))
-        top_half.setZValue(2)
+        top_half.setZValue(z_offset + 2)
         group.addToGroup(top_half)
-
-        # Cercle intérieur
-        inner = QGraphicsEllipseItem(
-            -PLAYER_INNER_RADIUS, -PLAYER_INNER_RADIUS,
-            PLAYER_INNER_RADIUS*2, PLAYER_INNER_RADIUS*2
-        )
+        inner = QGraphicsEllipseItem(-PLAYER_INNER_RADIUS, -PLAYER_INNER_RADIUS, PLAYER_INNER_RADIUS*2, PLAYER_INNER_RADIUS*2)
         inner.setPen(QPen(Qt.transparent, 0))
         inner.setBrush(QBrush(QColor(main_color)))
-        inner.setZValue(3)
+        inner.setZValue(z_offset + 3)
         group.addToGroup(inner)
-
-        # Numéro centré et orienté
         font = QFont("Arial")
         font.setBold(True)
-        font_size = int(PLAYER_INNER_RADIUS*1.8)
-        font.setPointSize(font_size)
+        font.setPointSize(int(PLAYER_INNER_RADIUS*1.8))
         text = QGraphicsTextItem(str(number))
         text.setDefaultTextColor(QColor(num_color))
         text.setFont(font)
         bounding = text.boundingRect()
-        text.setZValue(4)
+        text.setZValue(z_offset + 4)
         text.setTransformOriginPoint(bounding.width()/2, bounding.height()/2)
         text.setTransform(QTransform().scale(1, -1), True)
         text_rect = text.boundingRect()
         text.setPos(-text_rect.width()/2, +text_rect.height()/2)
         group.addToGroup(text)
-
-        # 3. Positionne le groupe au centre joueur et tourne selon l'angle OU valeur par défaut
         group.setPos(x, y)
-        if display_orientation:
-            deg = np.degrees(angle) + PLAYER_ROTATION_OFFSET_DEG 
-        else:
-            deg = PLAYER_ROTATION_DEFAULT_DEG + PLAYER_ROTATION_OFFSET_DEG  
+        deg = np.degrees(angle) + PLAYER_ROTATION_OFFSET_DEG if display_orientation else PLAYER_ROTATION_DEFAULT_DEG + PLAYER_ROTATION_OFFSET_DEG
         group.setRotation(deg)
         group.setZValue(z_offset)
         self.scene.addItem(group)
-
 
     def draw_ball(self, x, y):
         ball = self.scene.addEllipse(
@@ -220,3 +197,10 @@ class PitchWidget(QWidget):
         ball.setZValue(100)
         return ball
 
+    def draw_offside_line(self, x_offside, color="#FF40FF", style="dotted", visible=True):
+        if visible and x_offside is not None:
+            pen = QPen(QColor(color), 1.5)
+            pen.setStyle(Qt.DotLine if style == "dotted" else Qt.SolidLine)
+            line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX, pen)
+            line.setZValue(199)
+            return line
