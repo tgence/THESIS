@@ -44,6 +44,7 @@ away_ids           = data['away_ids']
 player_ids         = data['player_ids']
 player_orientations= data['orientations']
 player_velocities  = data['velocities']
+dsam               = data['dsam']
 home_colors        = data['home_colors']
 away_colors        = data['away_colors']
 id2num             = data['id2num']
@@ -51,6 +52,13 @@ n_frames_firstHalf = data['n1']
 n_frames_secondHalf= data['n2']
 n_frames           = data['ntot']
 last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
+
+print(n_frames_firstHalf, n_frames_secondHalf, n_frames)
+# print la shape de dsam
+print("Shape of dsam:", {side: {pid: len(data) for pid, data in dsam[side].items()} for side in dsam})
+# Print le nombre d element squ il y a pr chaque équipe et person id
+print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['firstHalf']['D']))
+print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['secondHalf']['D']))
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
