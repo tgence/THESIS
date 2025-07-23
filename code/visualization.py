@@ -90,8 +90,8 @@ def format_match_time(
     fps=FPS
 ):
     periods = [
-        ("FirstHalf",   0, n_frames_firstHalf,           0, LENGTH_FIRST_HALF),
-        ("SecondHalf",  n_frames_firstHalf, n_frames_firstHalf + n_frames_secondHalf, LENGTH_FIRST_HALF, LENGTH_FULL_TIME),
+        ("FirstHalf", 0, n_frames_firstHalf, 0, LENGTH_FIRST_HALF),
+        ("SecondHalf", n_frames_firstHalf, n_frames_firstHalf + n_frames_secondHalf, LENGTH_FIRST_HALF, LENGTH_FULL_TIME),
     ]
     # Ajout des prolongations si elles existent
     curr_start = n_frames_firstHalf + n_frames_secondHalf

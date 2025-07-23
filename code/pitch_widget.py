@@ -112,20 +112,25 @@ class PitchWidget(QWidget):
         right_arc.setPath(path_right)
         right_arc.setPen(QPen(Qt.white, LINE_WIDTH))
         self.scene.addItem(right_arc)
-        self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-        
+        self.view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+        print("sceneRect:", self.scene.sceneRect())
+        print("itemsBoundingRect:", self.scene.itemsBoundingRect())
+
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
 
-    def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, display_orientation=False, z_offset=10):
+    def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, velocity=0, display_orientation=False, z_offset=10):
         # Dessin d’un joueur avec orientation
-        if display_orientation:
-            arrow_length = PLAYER_OUTER_RADIUS * PLAYER_ARROW_LENGTH_FACTOR
-            arrow_x_end = x + arrow_length * math.cos(angle)
-            arrow_y_end = y + arrow_length * math.sin(angle)
+        if display_orientation and angle is not None and velocity is not None:
+            arrow_length = velocity * VELOCITY_ARROW_SCALE
+            arrow_x_start = x + PLAYER_OUTER_RADIUS * math.cos(angle)
+            arrow_y_start = y + PLAYER_OUTER_RADIUS * math.sin(angle)
+            arrow_x_end = x + (PLAYER_OUTER_RADIUS + arrow_length) * math.cos(angle)
+            arrow_y_end = y + (PLAYER_OUTER_RADIUS + arrow_length) * math.sin(angle)
             arrow = self.scene.addLine(
-                x, y, arrow_x_end, arrow_y_end, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
+                arrow_x_start, arrow_y_start, arrow_x_end, arrow_y_end, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
             )
             arrow.setZValue(z_offset - 2)
             chevron_size = PLAYER_CHEVRON_SIZE
@@ -199,8 +204,8 @@ class PitchWidget(QWidget):
 
     def draw_offside_line(self, x_offside, color="#FF40FF", style="dotted", visible=True):
         if visible and x_offside is not None:
-            pen = QPen(QColor(color), 1.5)
+            pen = QPen(QColor(color), OFFSIDE_LINE_WIDTH)
             pen.setStyle(Qt.DotLine if style == "dotted" else Qt.SolidLine)
-            line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX, pen)
+            line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX+1, pen)
             line.setZValue(199)
             return line

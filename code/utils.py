@@ -2,6 +2,7 @@
 
 import numpy as np
 from config import FPS
+import math
 
 
 def compute_orientations(xy_data, player_ids, every_n_frames=FPS):
@@ -27,3 +28,34 @@ def compute_orientations(xy_data, player_ids, every_n_frames=FPS):
                     angles[i:next_i+1] = angle
                 orientations[pid] += list(angles)
     return orientations
+
+
+
+def compute_velocities(xy_data, player_ids, every_n_frames=FPS):
+    """
+    Calcule la vitesse des joueurs toutes les every_n_frames
+    puis réplique cette vitesse sur les frames intermédiaires pour lisser.
+
+    Retourne: dict[pid][frame_idx] = vitesse (float, en m/s)
+    """
+    velocities = {pid: [] for pid in player_ids['Home'] + player_ids['Away']}
+    for half in ["firstHalf", "secondHalf"]:
+        for team in ["Home", "Away"]:
+            xy = xy_data[half][team].xy  # shape (frames, n_players*2)
+            n_frames = xy.shape[0]
+            ids = player_ids[team]
+            for j, pid in enumerate(ids):
+                traj = xy[:, 2*j:2*j+2]
+                vels = np.zeros(n_frames)
+                for i in range(0, n_frames, every_n_frames):
+                    next_i = min(i + every_n_frames, n_frames-1)
+                    dx = traj[next_i, 0] - traj[i, 0]
+                    dy = traj[next_i, 1] - traj[i, 1]
+                    dt_seconds = (next_i - i) / every_n_frames if (next_i - i) > 0 else 1.0 / every_n_frames
+                    if np.isnan(dx) or np.isnan(dy) or dt_seconds == 0:
+                        v = 0.0
+                    else:
+                        v = math.hypot(dx, dy) / dt_seconds
+                    vels[i:next_i+1] = v  # On duplique la valeur sur le bloc
+                velocities[pid] += list(vels)
+    return velocities

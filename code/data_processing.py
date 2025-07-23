@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
-from utils import compute_orientations
+from utils import compute_orientations, compute_velocities
 
 def safe_color(val, fallback='#aaaaaa'):
     if isinstance(val, str) and (val.startswith('#') or len(val)==6):
@@ -45,7 +45,7 @@ def load_data(path, file_pos, file_info, file_events, fps):
             d.update(team=team_name, side=side, shirtMainColor=main, shirtSecondaryColor=sec, shirtNumberColor=numc)
             rows.append(d)
     teams_df = pd.DataFrame(rows)
-
+    print(teams_df)
     # 4. Filter joueurs
     home_df = teams_df[teams_df.team==home_name]
     away_df = teams_df[teams_df.team==away_name]
@@ -55,6 +55,7 @@ def load_data(path, file_pos, file_info, file_events, fps):
 
     # 5. Orienations + couleurs
     orientations = compute_orientations(xy, player_ids, every_n_frames=fps)
+    velocities = compute_velocities(xy, player_ids, every_n_frames=fps)
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
@@ -69,7 +70,7 @@ def load_data(path, file_pos, file_info, file_events, fps):
         'events': events, 'pitch_info': pitch,
         'teams_df': teams_df, 'home_name': home_name, 'away_name': away_name,
         'home_ids': home_ids, 'away_ids': away_ids,
-        'player_ids': player_ids, 'orientations': orientations,
+        'player_ids': player_ids, 'orientations': orientations, 'velocities': velocities,
         'home_colors': home_colors, 'away_colors': away_colors,
         'id2num': id2num,
         'n1': n1, 'n2': n2, 'ntot': ntot

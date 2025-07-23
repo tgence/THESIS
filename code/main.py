@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton, QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup, QRadioButton, QGroupBox
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent
-
+from PyQt5.QtGui import QColor
 from pitch_widget import PitchWidget
 from annotation_tools import ArrowAnnotationManager
 from data_processing import load_data
@@ -42,6 +42,7 @@ home_ids           = data['home_ids']
 away_ids           = data['away_ids']
 player_ids         = data['player_ids']
 player_orientations= data['orientations']
+player_velocities  = data['velocities']
 home_colors        = data['home_colors']
 away_colors        = data['away_colors']
 id2num             = data['id2num']
@@ -51,6 +52,25 @@ n_frames           = data['ntot']
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
+
+"""FPS = 25
+start_min, end_min = 1, 2  # minutes
+start_frame = start_min * 60 * FPS
+end_frame = end_min * 60 * FPS
+
+pid2df = {}
+for pid in player_orientations.keys():
+    orient_slice = player_orientations[pid][start_frame:end_frame]
+    velo_slice = player_velocities[pid][start_frame:end_frame]
+    time_minutes = [i / FPS / 60 for i in range(start_frame, end_frame)]
+    pid2df[pid] = pd.DataFrame({
+        "minute": time_minutes,
+        "orientation_deg": np.degrees(orient_slice),
+        "velocity_m_s": velo_slice
+    })
+print(pid2df["1"].head())
+print(pid2df["13"].head())"""
+
 
 def get_frame_data(frame_number):
     if frame_number < n_frames_firstHalf:
@@ -95,19 +115,15 @@ class MainWindow(QWidget):
         self.setWindowTitle("Tactikz")
         self.resize(1700, 1000)
 
-        # --- LAYOUT PRINCIPAL ---
         main_layout = QHBoxLayout(self)
-
-        # --- PANEL GAUCHE (Terrain + contrôles) ---
         left_panel = QVBoxLayout()
         self.pitch_widget = PitchWidget(X_MIN, X_MAX, Y_MIN, Y_MAX)
         left_panel.addWidget(self.pitch_widget)
 
-        # ---- ANNOTATION MANAGER ----
+        # Annotation manager avec flèche noire par défaut
         self.annotation_manager = ArrowAnnotationManager(self.pitch_widget.scene)
-        self.arrow_mode = False
+        self.current_tool = "select"
 
-        # ---- Contrôles navigation + slider ----
         control_layout = QHBoxLayout()
         jump_layout = QHBoxLayout()
         jump_layout.addWidget(self.create_nav_button("back_1min", self.jump_frames))
@@ -122,7 +138,6 @@ class MainWindow(QWidget):
         control_layout.addLayout(jump_layout)
         left_panel.addLayout(control_layout)
 
-        # ---- Autres contrôles (à droite) ----
         self.speed_box = QComboBox()
         for label, _ in [
             ("x0.25", 160), ("x0.5", 80), ("x1", 40), ("x2", 20), ("x4", 10), ("x16", 2), ("x64", 1)
@@ -159,12 +174,27 @@ class MainWindow(QWidget):
         self.frame_slider.valueChanged.connect(self.update_scene)
         self.play_button.clicked.connect(self.toggle_play_pause)
 
-        # --- PANEL DROIT (Outils d'annotation) ---
+        # ----------- OUTILS ANNOTATION -----------
         tools_panel = QVBoxLayout()
         tools_panel.addWidget(QLabel("Annotation"))
-        self.arrow_button = QPushButton("Créer Flèche")
-        self.arrow_button.clicked.connect(self.activate_arrow_mode)
+
+        self.select_button = QPushButton("Sélection")
+        self.select_button.setCheckable(True)
+        self.select_button.setChecked(True)
+        self.select_button.clicked.connect(lambda: self.set_tool_mode("select"))
+        tools_panel.addWidget(self.select_button)
+
+        self.arrow_button = QPushButton("Flèche")
+        self.arrow_button.setCheckable(True)
+        self.arrow_button.setChecked(False)
+        self.arrow_button.clicked.connect(lambda: self.set_tool_mode("arrow"))
         tools_panel.addWidget(self.arrow_button)
+
+        self.curve_button = QPushButton("Courbé")
+        self.curve_button.setCheckable(True)
+        self.curve_button.setChecked(False)
+        self.curve_button.clicked.connect(lambda: self.set_tool_mode("curve"))
+        tools_panel.addWidget(self.curve_button)
 
         self.color_button = QPushButton("Couleur Flèche")
         self.color_button.clicked.connect(self.choose_arrow_color)
@@ -176,15 +206,13 @@ class MainWindow(QWidget):
 
         tools_panel.addStretch(1)
 
-        # Largeur de trait
         self.width_spin = QSpinBox()
         self.width_spin.setRange(1, 10)
         self.width_spin.setValue(3)
-        self.width_spin.valueChanged.connect(self.annotation_manager.set_width)
+        self.width_spin.valueChanged.connect(self.set_arrow_width)
         tools_panel.addWidget(QLabel("Largeur du trait"))
         tools_panel.addWidget(self.width_spin)
 
-        # Style de trait
         style_group = QGroupBox("Type de ligne")
         style_layout = QVBoxLayout()
         self.style_buttons = QButtonGroup()
@@ -202,21 +230,46 @@ class MainWindow(QWidget):
         tools_panel.addWidget(style_group)
         self.style_buttons.buttonClicked.connect(self.change_line_style)
 
-        # Courbe
-        self.curve_button = QPushButton("Courbé (toggle)")
-        self.curve_button.setCheckable(True)
-        self.curve_button.clicked.connect(lambda: self.annotation_manager.set_curved(self.curve_button.isChecked()))
-        tools_panel.addWidget(self.curve_button)
-
-        # --- ASSEMBLAGE LAYOUT PRINCIPAL ---
         main_layout.addLayout(left_panel, stretch=8)
         main_layout.addLayout(tools_panel, stretch=2)
 
         self.setLayout(main_layout)
         self.update_scene(0)
-
-        # --- EventFilter sur la zone de terrain ---
+        self.installEventFilter(self)  # Ajoute ceci, pour attraper tous les keypress au niveau fenêtre
         self.pitch_widget.view.viewport().installEventFilter(self)
+        self.pitch_widget.view.viewport().setFocusPolicy(Qt.StrongFocus)
+        self.pitch_widget.view.viewport().setFocus()
+
+
+        # Etat initial : sélection
+        self.set_tool_mode("select")
+
+
+
+    def set_tool_mode(self, mode):
+        self.current_tool = mode
+        self.select_button.setChecked(mode == "select")
+        self.arrow_button.setChecked(mode == "arrow")
+        self.curve_button.setChecked(mode == "curve")
+        self.pitch_widget.view.setCursor(Qt.ArrowCursor if mode == "select" else Qt.CrossCursor)
+        if mode == "select":
+            self.annotation_manager.try_finish_arrow()
+        if mode in ("arrow", "curve"):
+            self._pause_match()
+        self.annotation_manager.set_mode(mode)
+        # Toujours redonner le focus clavier après changement de mode
+        self.pitch_widget.view.viewport().setFocus()
+
+
+
+
+
+    def _pause_match(self):
+        if self.is_playing:
+            self.toggle_play_pause()
+
+    def set_arrow_width(self, value):
+        self.annotation_manager.set_width(value)
 
     def change_line_style(self, button):
         txt = button.text()
@@ -227,45 +280,54 @@ class MainWindow(QWidget):
         elif txt == "Serpentin":
             self.annotation_manager.set_style("zigzag")
 
-    def activate_arrow_mode(self):
-        self.arrow_mode = not self.arrow_mode
-        self.annotation_manager.set_active(self.arrow_mode)
-        self.arrow_button.setText("Créer Flèche (ON)" if self.arrow_mode else "Créer Flèche")
-        self.pitch_widget.view.setCursor(Qt.CrossCursor if self.arrow_mode else Qt.ArrowCursor)
-
     def choose_arrow_color(self):
-        color = QColorDialog.getColor()
+        color = QColorDialog.getColor(QColor(self.annotation_manager.arrow_color))
         if color.isValid():
             self.annotation_manager.set_color(color.name())
+
 
     def delete_last_arrow(self):
         self.annotation_manager.delete_last_arrow()
 
-    # === Gestion événements souris pour les flèches ===
+
+    def keyPressEvent(self, event):
+        if self.current_tool != "select":
+            self.annotation_manager.try_finish_arrow()
+            self.set_tool_mode("select")
+            # Event handled
+            return
+        # Sinon, laisse Qt gérer
+        super().keyPressEvent(event)
+
+
     def eventFilter(self, obj, event):
-        if not self.arrow_mode or obj != self.pitch_widget.view.viewport():
+        # print("eventFilter:", obj, event.type(), "(has focus? ", obj.hasFocus(), ")")
+        if obj != self.pitch_widget.view.viewport():
             return False
-        if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
-            scene_pos = self.pitch_widget.view.mapToScene(event.pos())
-            if not self.annotation_manager.arrow_points:
-                self.annotation_manager.start_arrow(scene_pos)
-            else:
+        # Si on est en mode sélection : Qt gère normalement
+        if self.current_tool == "select":
+            return False
+        # GESTION CLIC SOURIS
+        if event.type() == QEvent.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
                 self.annotation_manager.add_point(scene_pos)
+                # Mode flèche droite/zigzag/dotted : 2 clics → finish direct et retour en select
+                if not self.annotation_manager.arrow_curved and len(self.annotation_manager.arrow_points) == 2:
+                    self.annotation_manager.finish_arrow()
+                    self.set_tool_mode("select")
+            elif event.button() == Qt.RightButton:
+                if len(self.annotation_manager.arrow_points) < 2:
+                    self.annotation_manager.cancel_arrow()
+                    self.set_tool_mode("select")
+            return True  # Empêche propagation Qt
         elif event.type() == QEvent.MouseMove and self.annotation_manager.arrow_points:
             scene_pos = self.pitch_widget.view.mapToScene(event.pos())
             self.annotation_manager.update_preview(scene_pos)
-        elif event.type() == QEvent.MouseButtonPress and event.button() == Qt.RightButton:
-            self.annotation_manager.cancel_arrow()
-        elif event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
-            self.annotation_manager.cancel_arrow()
-        elif event.type() == QEvent.KeyPress and event.key() in [Qt.Key_Return, Qt.Key_Enter]:
-            self.annotation_manager.finish_arrow()
-            self.arrow_mode = False
-            self.arrow_button.setChecked(False)
-            self.annotation_manager.set_active(False)
-            self.pitch_widget.view.setCursor(Qt.ArrowCursor)
+            return True
         return False
 
+    
     def jump_frames(self, n):
         new_frame = np.clip(self.frame_slider.value() + n, 0, self.frame_slider.maximum())
         self.frame_slider.setValue(new_frame)
@@ -316,7 +378,7 @@ class MainWindow(QWidget):
                 num = id2num.get(pid, "")
                 self.pitch_widget.draw_player(
                     x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                    angle=player_orientations[pid][frame_number],
+                    angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
                     display_orientation=self.orientation_checkbox.isChecked(),
                     z_offset=10+i,
                 )
@@ -331,7 +393,7 @@ class MainWindow(QWidget):
                 num = id2num.get(pid, "")
                 self.pitch_widget.draw_player(
                     x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                    angle=player_orientations[pid][frame_number],
+                    angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
                     display_orientation=self.orientation_checkbox.isChecked(),
                     z_offset=50+i,
                 )

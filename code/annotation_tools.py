@@ -1,54 +1,114 @@
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QColor, QPainterPath
 from PyQt5.QtWidgets import QGraphicsPathItem
+
 import math
+
+from config import *
+DEFAULT_ARROW_COLOR = "#000000"
+
+
 
 class ArrowAnnotationManager:
     def __init__(self, scene):
         self.scene = scene
         self.arrows = []
         self.arrow_points = []
-        self.arrow_color = "#2D5AC7"
+        self.arrow_color = DEFAULT_ARROW_COLOR
         self.arrow_width = 3
-        self.arrow_style = "solid"  # 'solid', 'dotted', 'zigzag'
+        self.arrow_style = "solid"
         self.arrow_curved = False
         self.arrow_preview = None
         self.active = False
+        self.selected_arrow = None
+        self.current_mode = "select"
+
+    def add_point(self, pos):
+        if not self.arrow_curved:
+            if len(self.arrow_points) < 2:
+                self.arrow_points.append(pos)
+        else:
+            self.arrow_points.append(pos)
+    
+
+
+    def set_mode(self, mode):
+        self.active = (mode in ("arrow", "curve"))
+        self.arrow_curved = (mode == "curve")
+        self.arrow_points = []
+        self.remove_arrow_preview()
+        self.clear_selection()
+        self.current_mode = mode
+
 
     def set_active(self, val: bool):
         self.active = val
         self.arrow_points = []
         self.remove_arrow_preview()
+        if val:
+            self.clear_selection()
 
     def set_color(self, color):
-        self.arrow_color = color
+        if self.selected_arrow:
+            pen = self.selected_arrow.pen()
+            pen.setColor(QColor(color))
+            self.selected_arrow.setPen(pen)
+        else:
+            self.arrow_color = color
 
     def set_width(self, width):
-        self.arrow_width = width
+        if self.selected_arrow:
+            pen = self.selected_arrow.pen()
+            pen.setWidth(width)
+            self.selected_arrow.setPen(pen)
+        else:
+            self.arrow_width = width
 
     def set_style(self, style):
-        self.arrow_style = style
+        if self.selected_arrow:
+            pen = self.selected_arrow.pen()
+            if style == "solid":
+                pen.setStyle(Qt.SolidLine)
+            elif style == "dotted":
+                pen.setStyle(Qt.DotLine)
+            self.selected_arrow.setPen(pen)
+        else:
+            self.arrow_style = style
 
     def set_curved(self, curved):
         self.arrow_curved = curved
+        # Si édition post, redessiner la flèche sélectionnée
+        if self.selected_arrow:
+            idx = self.arrows.index(self.selected_arrow)
+            pts = self.selected_arrow.arrow_points if hasattr(self.selected_arrow, "arrow_points") else []
+            if pts:
+                self.scene.removeItem(self.selected_arrow)
+                new_arrow = self.draw_arrow(pts, preview=False)
+                self.arrows[idx] = new_arrow
+                self.selected_arrow = new_arrow
 
     def remove_arrow_preview(self):
         if self.arrow_preview:
-            self.scene.removeItem(self.arrow_preview)
+            try:
+                self.scene.removeItem(self.arrow_preview)
+            except RuntimeError:
+                pass
             self.arrow_preview = None
 
     def start_arrow(self, pos):
         self.arrow_points = [pos]
 
-    def add_point(self, pos):
-        self.arrow_points.append(pos)
-
     def update_preview(self, pos):
         if not self.arrow_points:
             return
-        pts = self.arrow_points + [pos]
+        if not self.arrow_curved:
+            pts = [self.arrow_points[0], pos]
+        else:
+            pts = self.arrow_points + [pos]
         self.remove_arrow_preview()
         self.arrow_preview = self.draw_arrow(pts, preview=True)
+
+
 
     def finish_arrow(self):
         if len(self.arrow_points) < 2:
@@ -56,18 +116,75 @@ class ArrowAnnotationManager:
             self.remove_arrow_preview()
             return
         arrow_item = self.draw_arrow(self.arrow_points, preview=False)
+        arrow_item.arrow_points = list(self.arrow_points)
+        arrow_item.setFlag(QGraphicsPathItem.ItemIsSelectable, True)
+        arrow_item.setFlag(QGraphicsPathItem.ItemIsFocusable, True)
+        arrow_item.setAcceptHoverEvents(True)
+        arrow_item.setZValue(999)
+        arrow_item.mousePressEvent = self.arrow_mouse_press_event(arrow_item)
         self.arrows.append(arrow_item)
         self.arrow_points = []
         self.remove_arrow_preview()
+
+    def try_finish_arrow(self):
+        """
+        Termine la flèche en cours si au moins 2 points (pour toute flèche/courbe).
+        Sinon, annule l'annotation.
+        """
+        if len(self.arrow_points) >= 2:
+            self.finish_arrow()
+        else:
+            self.cancel_arrow()
+
+    def arrow_mouse_press_event(self, arrow_item):
+        def handler(event):
+            if event.button() == Qt.LeftButton:
+                self.clear_selection()
+                arrow_item.setSelected(True)
+                self.selected_arrow = arrow_item
+        return handler
+
+    def clear_selection(self):
+        for arrow in self.arrows:
+            arrow.setSelected(False)
+        self.selected_arrow = None
 
     def cancel_arrow(self):
         self.arrow_points = []
         self.remove_arrow_preview()
 
+    def draw_arrow_head_triangle(self, path, start, end, arrow_head_length=ARROW_HEAD_LENGTH, arrow_head_angle_deg=ARROW_HEAD_ANGLE):
+        """
+        Ajoute un triangle de tête de flèche à un QPainterPath.
+        - path : QPainterPath déjà construit jusqu'à end
+        - start, end : QPointF
+        - arrow_width : largeur du trait principal
+        - arrow_head_length : longueur du triangle
+        - arrow_head_angle_deg : demi-angle à la base du triangle
+        """
+        dx, dy = end.x() - start.x(), end.y() - start.y()
+        angle = math.atan2(dy, dx)
+        length = arrow_head_length
+        angle1 = angle + math.radians(arrow_head_angle_deg)
+        angle2 = angle - math.radians(arrow_head_angle_deg)
+        p1 = QPointF(
+            end.x() - length * math.cos(angle1),
+            end.y() - length * math.sin(angle1)
+        )
+        p2 = QPointF(
+            end.x() - length * math.cos(angle2),
+            end.y() - length * math.sin(angle2)
+        )
+        # Triangle plein
+        path.moveTo(end)
+        path.lineTo(p1)
+        path.lineTo(p2)
+        path.closeSubpath()
+        return path
+
     def draw_arrow(self, pts, preview=False):
         path = QPainterPath()
         if self.arrow_curved and len(pts) > 2:
-            # courbe de Bézier en passant par chaque point (approx)
             path.moveTo(pts[0])
             for i in range(1, len(pts)-1):
                 mid = (pts[i] + pts[i+1]) * 0.5
@@ -76,10 +193,7 @@ class ArrowAnnotationManager:
         elif self.arrow_style == "zigzag" and len(pts) > 2:
             path.moveTo(pts[0])
             for i, p in enumerate(pts[1:], 1):
-                if i % 2 == 0:
-                    dz = QPointF(0, 8)  # zig
-                else:
-                    dz = QPointF(0, -8) # zag
+                dz = QPointF(0, 8) if i % 2 == 0 else QPointF(0, -8)
                 mid = (p + pts[i-1]) * 0.5 + dz
                 path.lineTo(mid)
                 path.lineTo(p)
@@ -87,19 +201,10 @@ class ArrowAnnotationManager:
             path.moveTo(pts[0])
             for p in pts[1:]:
                 path.lineTo(p)
-
-        # Tête de flèche
+        # Flèche
         if len(pts) >= 2:
             start, end = pts[-2], pts[-1]
-            dx, dy = end.x() - start.x(), end.y() - start.y()
-            angle = math.atan2(dy, dx)
-            head_len = 10
-            head_angle = math.radians(28)
-            for da in [-head_angle, +head_angle]:
-                x2 = end.x() - head_len * math.cos(angle + da)
-                y2 = end.y() - head_len * math.sin(angle + da)
-                path.moveTo(end)
-                path.lineTo(QPointF(x2, y2))
+            path = self.draw_arrow_head_triangle(path, start, end)
 
         pen = QPen(QColor(self.arrow_color), self.arrow_width if not preview else 1.5)
         if self.arrow_style == "dotted":
@@ -113,10 +218,15 @@ class ArrowAnnotationManager:
         item = QGraphicsPathItem(path)
         item.setPen(pen)
         item.setZValue(999 if not preview else 998)
+        item.arrow_points = list(pts)
         self.scene.addItem(item)
         return item
 
     def delete_last_arrow(self):
         if self.arrows:
             arrow_item = self.arrows.pop()
-            self.scene.removeItem(arrow_item)
+            try:
+                self.scene.removeItem(arrow_item)
+            except RuntimeError:
+                pass
+        self.clear_selection()
