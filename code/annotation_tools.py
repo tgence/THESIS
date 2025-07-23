@@ -1,3 +1,5 @@
+# annotation_tools.py
+  
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QColor, QPainterPath
 from PyQt5.QtWidgets import QGraphicsPathItem

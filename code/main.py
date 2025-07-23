@@ -1,3 +1,5 @@
+# main.py
+ 
 import os
 import sys
 import numpy as np
@@ -9,8 +11,8 @@ from PyQt5.QtGui import QColor
 from pitch_widget import PitchWidget
 from annotation_tools import ArrowAnnotationManager
 from data_processing import load_data
-from config import FPS
 from visualization import format_match_time
+from config import *
 
 # --- CONFIGURATION: Always use relative paths ---
 CODE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +30,6 @@ data = load_data(
     FILE_NAME_POS,
     FILE_NAME_INFOS,
     FILE_NAME_EVENTS,
-    FPS
 )
 
 xy_objects         = data['xy_objects']
@@ -49,27 +50,39 @@ id2num             = data['id2num']
 n_frames_firstHalf = data['n1']
 n_frames_secondHalf= data['n2']
 n_frames           = data['ntot']
+last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
 
-"""FPS = 25
-start_min, end_min = 1, 2  # minutes
-start_frame = start_min * 60 * FPS
-end_frame = end_min * 60 * FPS
+"""# teams_df : le DataFrame issu de load_data (contient PersonId, ShirtNumber, side)
+away_11_row = teams_df[(teams_df["side"] == "away") & (teams_df["ShirtNumber"].astype(str) == "11")]
+if away_11_row.empty:
+    raise Exception("Aucun joueur away avec le numéro 11 trouvé.")
+pid_away_11 = away_11_row.iloc[0]["PersonId"]
+print("PersonId away 11 =", pid_away_11)
 
-pid2df = {}
-for pid in player_orientations.keys():
-    orient_slice = player_orientations[pid][start_frame:end_frame]
-    velo_slice = player_velocities[pid][start_frame:end_frame]
-    time_minutes = [i / FPS / 60 for i in range(start_frame, end_frame)]
-    pid2df[pid] = pd.DataFrame({
-        "minute": time_minutes,
-        "orientation_deg": np.degrees(orient_slice),
-        "velocity_m_s": velo_slice
-    })
-print(pid2df["1"].head())
-print(pid2df["13"].head())"""
+FPS = 25  # adapte si différent dans ton config
+start_minute = 1
+end_minute = 2
+start_frame = start_minute * 60 * FPS
+end_frame = end_minute * 60 * FPS
+
+# player_orientations et player_velocities sont indexés par PersonId, pas ShirtNumber
+orientations = player_orientations[pid_away_11][start_frame:end_frame]
+velocities = player_velocities[pid_away_11][start_frame:end_frame]
+time_minutes = [i / FPS / 60 for i in range(start_frame, end_frame)]
+import pandas as pd
+df = pd.DataFrame({
+    "minute": time_minutes,
+    "orientation_deg": np.degrees(orientations),
+    "velocity_m_s": velocities
+})
+print(df.head())
+
+df.to_csv("away_11_ori_velo.csv", index=False)"""
+
+
 
 
 def get_frame_data(frame_number):
@@ -86,28 +99,37 @@ def get_possession_for_frame(possession, half, frame_idx):
         return "Away"
     else:
         return None
-
-def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, away_ids, teams_df):
+    
+def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, away_ids, teams_df, last_positions):
     defending_team = "Home" if possession_team == "Away" else "Away"
     player_ids_team = home_ids if defending_team == "Home" else away_ids
     team_name = teams_df[teams_df['PersonId'] == player_ids_team[0]]['team'].iloc[0]
+
     gk_ids = set(
         teams_df[
             (teams_df['team'] == team_name)
             & (teams_df['PlayingPosition'].str.lower().str.contains('tw', na=False))
         ]['PersonId']
     )
+
     xy = xy_objects[half][defending_team].xy[frame_idx]
     x_coords = []
+
     for i, pid in enumerate(player_ids_team):
         if pid in gk_ids:
             continue
         x = xy[2*i]
-        if np.isnan(x): continue
-        x_coords.append(x)
+        if np.isnan(x):
+            x = last_positions[defending_team].get(pid, (np.nan, np.nan))[0]
+        if not np.isnan(x):
+            x_coords.append(x)
+
     if not x_coords:
         return None
+
     return max(x_coords) if defending_team == "Home" else min(x_coords)
+
+
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -368,49 +390,49 @@ class MainWindow(QWidget):
     def update_scene(self, frame_number):
         self.pitch_widget.draw_pitch()
         half, idx, halftime = get_frame_data(frame_number)
-        # Home
-        home_xy = xy_objects[half]["Home"].xy[idx]
-        for i, pid in enumerate(home_ids):
-            try:
-                x, y = home_xy[2*i], home_xy[2*i+1]
-                if np.isnan(x) or np.isnan(y): continue
-                main, sec, numc = home_colors[pid]
-                num = id2num.get(pid, "")
-                self.pitch_widget.draw_player(
-                    x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                    angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
-                    display_orientation=self.orientation_checkbox.isChecked(),
-                    z_offset=10+i,
-                )
-            except IndexError: continue
-        # Away
-        away_xy = xy_objects[half]["Away"].xy[idx]
-        for i, pid in enumerate(away_ids):
-            try:
-                x, y = away_xy[2*i], away_xy[2*i+1]
-                if np.isnan(x) or np.isnan(y): continue
-                main, sec, numc = away_colors[pid]
-                num = id2num.get(pid, "")
-                self.pitch_widget.draw_player(
-                    x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                    angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
-                    display_orientation=self.orientation_checkbox.isChecked(),
-                    z_offset=50+i,
-                )
-            except IndexError: continue
+
+        for side, ids, colors in [("Home", home_ids, home_colors), ("Away", away_ids, away_colors)]:
+            xy = xy_objects[half][side].xy[idx]
+            for i, pid in enumerate(ids):
+                try:
+                    x, y = xy[2*i], xy[2*i+1]
+                    if np.isnan(x) or np.isnan(y):
+                        x, y = last_positions[side][pid]
+                    else:
+                        last_positions[side][pid] = (x, y)
+                    main, sec, numc = colors[pid]
+                    num = id2num.get(pid, "")
+                    if not np.isnan(x) and not np.isnan(y):
+                        self.pitch_widget.draw_player(
+                        x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
+                        angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
+                        display_orientation=self.orientation_checkbox.isChecked(),
+                        z_offset=(10 if side == "Home" else 50) + i,
+                    )
+                except IndexError:
+                    continue
+
         # Ball
         ball_xy = xy_objects[half]["Ball"].xy[idx]
-        if ball_xy is not None and not np.any(np.isnan(ball_xy)):
-            bx, by = ball_xy[0], ball_xy[1]
-            self.pitch_widget.draw_ball(bx, by)
-        # Détermine la possession et la ligne de hors-jeu
+        x, y = ball_xy[0], ball_xy[1]
+        if np.isnan(x) or np.isnan(y):
+            x, y = last_positions["Ball"]
+        else:
+            last_positions["Ball"] = (x, y)
+        if not np.isnan(x) and not np.isnan(y):
+            self.pitch_widget.draw_ball(x=x, y=y)
+
+        # Offside line
         possession_team = get_possession_for_frame(possession, half, idx)
-        offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, home_ids, away_ids, teams_df)
+        offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, home_ids, away_ids, teams_df, last_positions)
         self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_checkbox.isChecked())
+
         match_time = format_match_time(
             frame_number, n_frames_firstHalf, n_frames_secondHalf, 0, 0, fps=FPS
         )
         self.info_label.setText(f"{halftime} {match_time}   |   Frame {frame_number}")
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

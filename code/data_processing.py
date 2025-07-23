@@ -1,3 +1,5 @@
+# data_processing.py
+ 
 import os
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -19,7 +21,7 @@ def get_player_color_dict(df):
         d[pid] = (main, sec, numc)
     return d
 
-def load_data(path, file_pos, file_info, file_events, fps):
+def load_data(path, file_pos, file_info, file_events):
     # 1. Positions, possession, pitch, etc.
     # return: xy_objects, possession (Code), ballstatus (Code), teamsheets, pitch_info
     xy, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
@@ -45,7 +47,7 @@ def load_data(path, file_pos, file_info, file_events, fps):
             d.update(team=team_name, side=side, shirtMainColor=main, shirtSecondaryColor=sec, shirtNumberColor=numc)
             rows.append(d)
     teams_df = pd.DataFrame(rows)
-    print(teams_df)
+
     # 4. Filter joueurs
     home_df = teams_df[teams_df.team==home_name]
     away_df = teams_df[teams_df.team==away_name]
@@ -54,11 +56,12 @@ def load_data(path, file_pos, file_info, file_events, fps):
     player_ids = {'Home': home_ids, 'Away': away_ids}
 
     # 5. Orienations + couleurs
-    orientations = compute_orientations(xy, player_ids, every_n_frames=fps)
-    velocities = compute_velocities(xy, player_ids, every_n_frames=fps)
+    orientations = compute_orientations(xy, player_ids)
+    velocities = compute_velocities(xy, player_ids)
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
+    print(id2num)
 
     # 6. Frame counts
     n1 = xy['firstHalf']['Home'].xy.shape[0]

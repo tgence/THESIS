@@ -40,6 +40,7 @@ ARROW_HEAD_ANGLE = 45  # en degrés
 
 # TEMPS
 FPS = 25               # Fréquence d’échantillonnage (frames per second)
+#UPDATE_FREQUENCY = 5  # Fréquence de mise à jour des données générées (orientation, vitesse, etc.)
 LENGTH_FIRST_HALF = 45 # Minutes
 LENGTH_SECOND_HALF = 45
 LENGTH_OVERTIME_HALF = 15

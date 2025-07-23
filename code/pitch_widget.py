@@ -1,3 +1,5 @@
+# pitch_widget.py
+ 
 import numpy as np
 import math
 from PyQt5.QtWidgets import (
@@ -112,9 +114,6 @@ class PitchWidget(QWidget):
         right_arc.setPath(path_right)
         right_arc.setPen(QPen(Qt.white, LINE_WIDTH))
         self.scene.addItem(right_arc)
-        self.view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
-        print("sceneRect:", self.scene.sceneRect())
-        print("itemsBoundingRect:", self.scene.itemsBoundingRect())
 
 
     def resizeEvent(self, event):
