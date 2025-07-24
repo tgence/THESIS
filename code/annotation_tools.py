@@ -147,8 +147,13 @@ class ArrowAnnotationManager:
         return handler
 
     def clear_selection(self):
-        for arrow in self.arrows:
-            arrow.setSelected(False)
+        # On ne tente de setSelected que si l'item n'a pas été détruit par Qt.
+        for arrow in list(self.arrows):
+            try:
+                arrow.setSelected(False)
+            except RuntimeError:
+                # Si jamais un arrow a été supprimé par erreur, on l'enlève de la liste
+                self.arrows.remove(arrow)
         self.selected_arrow = None
 
     def cancel_arrow(self):

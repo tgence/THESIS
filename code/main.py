@@ -11,7 +11,7 @@ from PyQt5.QtCore import Qt, QTimer, QEvent
 from PyQt5.QtGui import QColor
 from pitch_widget import PitchWidget
 from annotation_tools import ArrowAnnotationManager
-from data_processing import load_data
+from data_processing import load_data, build_player_out_frames
 from visualization import format_match_time
 from config import *
 
@@ -52,6 +52,7 @@ n_frames_firstHalf = data['n1']
 n_frames_secondHalf= data['n2']
 n_frames           = data['ntot']
 last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
+player_out_frames  = build_player_out_frames(events, FPS, n_frames_firstHalf)
 
 """print(n_frames_firstHalf, n_frames_secondHalf, n_frames)
 # print la shape de dsam
@@ -339,7 +340,6 @@ class MainWindow(QWidget):
 
 
     def eventFilter(self, obj, event):
-        # print("eventFilter:", obj, event.type(), "(has focus? ", obj.hasFocus(), ")")
         if obj != self.pitch_widget.view.viewport():
             return False
         # Si on est en mode sélection : Qt gère normalement
@@ -404,13 +404,20 @@ class MainWindow(QWidget):
             self.toggle_play_pause()
 
     def update_scene(self, frame_number):
+        self.pitch_widget.clear_dynamic() 
         self.pitch_widget.draw_pitch()
         half, idx, halftime = get_frame_data(frame_number)
 
+        TMP_COUNTER = 0
         for side, ids, colors in [("Home", home_ids, home_colors), ("Away", away_ids, away_colors)]:
             xy = xy_objects[half][side].xy[idx]
             for i, pid in enumerate(ids):
                 try:
+                    # Filtrage sortie/expulsion TOUJOURS
+                    if str(pid) in player_out_frames and frame_number >= player_out_frames[str(pid)]:
+                        print(f"Frame {frame_number} : Joueur {pid} OUT à {player_out_frames[str(pid)]}")
+                        continue
+
                     x, y = xy[2*i], xy[2*i+1]
                     if np.isnan(x) or np.isnan(y):
                         x, y = last_positions[side][pid]
@@ -419,14 +426,17 @@ class MainWindow(QWidget):
                     main, sec, numc = colors[pid]
                     num = id2num.get(pid, "")
                     if not np.isnan(x) and not np.isnan(y):
+                        TMP_COUNTER += 1
                         self.pitch_widget.draw_player(
-                        x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                        angle=player_orientations[pid][frame_number], velocity=dsam[side][pid][half]['S'][idx],
-                        display_orientation=self.orientation_checkbox.isChecked(),
-                        z_offset=(10 if side == "Home" else 50) + i,
-                    )
+                            x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
+                            angle=player_orientations[pid][frame_number], velocity=dsam[side][pid][half]['S'][idx],
+                            display_orientation=self.orientation_checkbox.isChecked(),
+                            z_offset=(10 if side == "Home" else 50) + i,
+                        )
                 except IndexError:
                     continue
+        print(TMP_COUNTER)
+
 
         # Ball
         ball_xy = xy_objects[half]["Ball"].xy[idx]

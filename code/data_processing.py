@@ -21,21 +21,33 @@ def get_player_color_dict(df):
         d[pid] = (main, sec, numc)
     return d
 
+import numpy as np
 
-def extract_dsam_from_xml(file_pos, player_ids, teamid_map):
+def extract_dsam_from_xml(file_pos, player_ids, teamid_map, n_frames_per_half):
     """
-    Extrait D, S, A, M, N pour chaque joueur et chaque période (firstHalf, secondHalf...).
-    Retourne :
-    {
-      'Home': {person_id: {'firstHalf': {...}, 'secondHalf': {...}, ...}},
-      'Away': {...}
-    }
+    Extrait D, S, A, M pour chaque joueur et chaque période (firstHalf, secondHalf...).
+    Pour chaque joueur et chaque période :
+      - Si pas de données : [nan]*n_frames
+      - Si données incomplètes : nan là où il n'y a pas de data
+    Args :
+        file_pos: chemin du xml
+        player_ids: {'Home': [...], 'Away': [...]}
+        teamid_map: {'Home': '...', 'Away': '...'}
+        n_frames_per_half: dict {'firstHalf': N1, 'secondHalf': N2, ...}
     """
     import xml.etree.ElementTree as ET
     tree_pos = ET.parse(file_pos)
     root_pos = tree_pos.getroot()
     dsam = {'Home': {}, 'Away': {}}
 
+    # Initialisation de toutes les entrées à des nan
+    for side in ['Home', 'Away']:
+        for pid in player_ids[side]:
+            dsam[side][pid] = {}
+            for segment, n_frames in n_frames_per_half.items():
+                dsam[side][pid][segment] = {k: [np.nan]*n_frames for k in ['D', 'S', 'A', 'M']}
+
+    # Parcours du XML
     for frameset in root_pos.findall('.//FrameSet'):
         team_id = frameset.get('TeamId')
         person_id = frameset.get('PersonId')
@@ -49,19 +61,54 @@ def extract_dsam_from_xml(file_pos, player_ids, teamid_map):
         if side is None or person_id not in player_ids[side]:
             continue
         frames = frameset.findall('Frame')
-        data = {k: [] for k in ['D', 'S', 'A', 'M']}
-        for fr in frames:
-            data['D'].append(float(fr.get('D', 'nan')))
-            s_kmh = float(fr.get('S', 'nan'))
-            data['S'].append(s_kmh / 3.6)   # km/h -> m/s
-            data['A'].append(float(fr.get('A', 'nan')))
-            data['M'].append(float(fr.get('M', 'nan')))
-        # Construction multi-segment
-        if person_id not in dsam[side]:
-            dsam[side][person_id] = {}
-        dsam[side][person_id][segment] = data
+        n_frames = len(frames)
+        for idx, fr in enumerate(frames):
+            try:
+                dsam[side][person_id][segment]['D'][idx] = float(fr.get('D', 'nan'))
+            except Exception:
+                dsam[side][person_id][segment]['D'][idx] = np.nan
+            try:
+                s_kmh = float(fr.get('S', 'nan'))
+                dsam[side][person_id][segment]['S'][idx] = s_kmh / 3.6
+            except Exception:
+                dsam[side][person_id][segment]['S'][idx] = np.nan
+            try:
+                dsam[side][person_id][segment]['A'][idx] = float(fr.get('A', 'nan'))
+            except Exception:
+                dsam[side][person_id][segment]['A'][idx] = np.nan
+            try:
+                dsam[side][person_id][segment]['M'][idx] = float(fr.get('M', 'nan'))
+            except Exception:
+                dsam[side][person_id][segment]['M'][idx] = np.nan
+
     return dsam
 
+
+def build_player_out_frames(events_objects, fps, n_frames_firstHalf):
+    """
+    Retourne un dict {player_id: sortie_frame} pour Substitution Out (eID==19) ou Red Card (eID==6).
+    On travaille DIRECTEMENT avec events_objects[segment][team].events (DataFrame).
+    """
+    out_player_frames = {}
+    for segment, team_dict in events_objects.items():
+        # Calcule offset de frame selon la mi-temps
+        offset = 0
+        if segment.lower() in ["ht2", "secondhalf", "second_half", "second"]:
+            offset = n_frames_firstHalf
+
+        for team, events_obj in team_dict.items():
+            df = events_obj.events
+            # Substitution OUT = eID==19, Red Card = eID==6
+            mask = (df["eID"] == 19) | (df["eID"] == 6)
+            for _, row in df[mask].iterrows():
+                pid = str(row["pID"])
+                minute = row["minute"]
+                second = row["second"]
+                frame = int((minute * 60 + second) * fps) + offset
+                # On garde la 1ère sortie par joueur (minimum)
+                if pid not in out_player_frames or frame < out_player_frames[pid]:
+                    out_player_frames[pid] = frame
+    return out_player_frames
 
 
 
@@ -76,6 +123,7 @@ def load_data(path, file_pos, file_info, file_events):
         os.path.join(path, file_events),
         os.path.join(path, file_info)
     )
+  
     # 3. Teams/players info
     tree = ET.parse(os.path.join(path, file_info))
     root = tree.getroot()
@@ -103,9 +151,13 @@ def load_data(path, file_pos, file_info, file_events):
         'Home': home_df.iloc[0]['TeamId'] if not home_df.empty else None,
         'Away': away_df.iloc[0]['TeamId'] if not away_df.empty else None
     }
-    # 5. Extraction D/S/A/M/N
+    # 5. Extraction D (distance)/S (speed)/A (acceleration)/M (minute) and number of frames per half + total
+    n1 = xy['firstHalf']['Home'].xy.shape[0]
+    n2 = xy['secondHalf']['Home'].xy.shape[0]
+    ntot = n1 + n2
+    n_frames_per_half = {'firstHalf': n1, 'secondHalf': n2}
     dsam = extract_dsam_from_xml(
-        os.path.join(path, file_pos), player_ids, teamid_map
+        os.path.join(path, file_pos), player_ids, teamid_map, n_frames_per_half
     )
     # 6. Autres traitements
     orientations = compute_orientations(xy, player_ids)
@@ -113,9 +165,7 @@ def load_data(path, file_pos, file_info, file_events):
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
-    n1 = xy['firstHalf']['Home'].xy.shape[0]
-    n2 = xy['secondHalf']['Home'].xy.shape[0]
-    ntot = n1 + n2
+
     return {
         'xy_objects': xy, 'possession': possession, 'ballstatus': ballstatus,
         'events': events, 'pitch_info': pitch,
