@@ -42,7 +42,6 @@ class PitchWidget(QWidget):
 
     def clear_dynamic(self):
         """Efface tous les éléments dynamiques (joueurs, balles, lignes, etc)."""
-        print(len(self.dynamic_items), "éléments dynamiques à effacer")
         for item in self.dynamic_items:
             self.scene.removeItem(item)
         self.dynamic_items.clear()

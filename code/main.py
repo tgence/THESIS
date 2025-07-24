@@ -246,8 +246,9 @@ class MainWindow(QWidget):
         tools_panel.addStretch(1)
 
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(1, 10)
-        self.width_spin.setValue(3)
+        self.width_spin.setRange(ANNOTATION_ARROW_SCALE_RANGE[0], ANNOTATION_ARROW_SCALE_RANGE[1])
+        self.width_spin.setValue(ANNOTATION_ARROW_BASE_WIDTH_VALUE) 
+
         self.width_spin.valueChanged.connect(self.set_arrow_width)
         tools_panel.addWidget(QLabel("Largeur du trait"))
         tools_panel.addWidget(self.width_spin)
@@ -413,16 +414,7 @@ class MainWindow(QWidget):
             xy = xy_objects[half][side].xy[idx]
             for i, pid in enumerate(ids):
                 try:
-                    # Filtrage sortie/expulsion TOUJOURS
-                    if str(pid) in player_out_frames and frame_number >= player_out_frames[str(pid)]:
-                        print(f"Frame {frame_number} : Joueur {pid} OUT à {player_out_frames[str(pid)]}")
-                        continue
-
                     x, y = xy[2*i], xy[2*i+1]
-                    if np.isnan(x) or np.isnan(y):
-                        x, y = last_positions[side][pid]
-                    else:
-                        last_positions[side][pid] = (x, y)
                     main, sec, numc = colors[pid]
                     num = id2num.get(pid, "")
                     if not np.isnan(x) and not np.isnan(y):
@@ -435,18 +427,12 @@ class MainWindow(QWidget):
                         )
                 except IndexError:
                     continue
-        print(TMP_COUNTER)
 
 
         # Ball
         ball_xy = xy_objects[half]["Ball"].xy[idx]
         x, y = ball_xy[0], ball_xy[1]
-        if np.isnan(x) or np.isnan(y):
-            x, y = last_positions["Ball"]
-        else:
-            last_positions["Ball"] = (x, y)
-        if not np.isnan(x) and not np.isnan(y):
-            self.pitch_widget.draw_ball(x=x, y=y)
+        self.pitch_widget.draw_ball(x=x, y=y)
 
         # Offside line
         possession_team = get_possession_for_frame(possession, half, idx)

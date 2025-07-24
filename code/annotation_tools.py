@@ -17,7 +17,7 @@ class ArrowAnnotationManager:
         self.arrows = []
         self.arrow_points = []
         self.arrow_color = DEFAULT_ARROW_COLOR
-        self.arrow_width = 3
+        self.arrow_width = ANNOTATION_ARROW_BASE_WIDTH_VALUE
         self.arrow_style = "solid"
         self.arrow_curved = False
         self.arrow_preview = None
@@ -160,7 +160,7 @@ class ArrowAnnotationManager:
         self.arrow_points = []
         self.remove_arrow_preview()
 
-    def draw_arrow_head_triangle(self, path, start, end, arrow_head_length=ARROW_HEAD_LENGTH, arrow_head_angle_deg=ARROW_HEAD_ANGLE):
+    def draw_arrow_head_triangle(self, path, start, end, arrow_head_length=ANNOTATION_ARROW_HEAD_LENGTH, arrow_head_angle_deg=ANNOTATION_ARROW_HEAD_ANGLE):
         """
         Ajoute un triangle de tête de flèche à un QPainterPath.
         - path : QPainterPath déjà construit jusqu'à end
@@ -213,19 +213,23 @@ class ArrowAnnotationManager:
             start, end = pts[-2], pts[-1]
             path = self.draw_arrow_head_triangle(path, start, end)
 
-        pen = QPen(QColor(self.arrow_color), self.arrow_width if not preview else 1.5)
+        color = QColor(self.arrow_color)
+        if preview:
+            color.setAlphaF(0.5)  # Ghost effect
+        else: color.setAlphaF(1.0)
+        pen = QPen(color, self.arrow_width* 0.1)
         if self.arrow_style == "dotted":
             pen.setStyle(Qt.DotLine)
         elif self.arrow_style == "zigzag":
             pen.setStyle(Qt.SolidLine)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
-        if preview:
-            pen.setColor(QColor(self.arrow_color).lighter(160))
+
         item = QGraphicsPathItem(path)
         item.setPen(pen)
         item.setZValue(999 if not preview else 998)
         item.arrow_points = list(pts)
+        
         self.scene.addItem(item)
         return item
 

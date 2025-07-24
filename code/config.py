@@ -1,6 +1,6 @@
 # config.py
 
-# Affichage
+# Display
 SCENE_EXTRA_GRASS = 4
 LINE_WIDTH = 0.25
 
@@ -20,27 +20,29 @@ PENALTY_SPOT_DIST = 11
 OFFSIDE_LINE_WIDTH = 0.5
 
 
-# Joueur (paramétrage)
+# Player and ball
 PLAYER_OUTER_RADIUS = 1.6
 PLAYER_INNER_RADIUS = 1.2
 PLAYER_ARROW_THICKNESS = 0.45
 PLAYER_CHEVRON_SIZE = 1.0
+PLAYER_ROTATION_OFFSET_DEG = 270
+PLAYER_ROTATION_DEFAULT_DEG = 90  # Pour regarder vers le haut
 PLAYER_CHEVRON_ANGLE_DEG = 150
 BALL_RADIUS = 0.7
 VELOCITY_ARROW_SCALE = 1
 
-# Pour l'orientation
-PLAYER_ROTATION_OFFSET_DEG = 270
-PLAYER_ROTATION_DEFAULT_DEG = 90  # Pour regarder vers le haut
 
 
-# FLECHES
-ARROW_HEAD_LENGTH = 2.5
-ARROW_HEAD_ANGLE = 45  # en degrés
 
-# TEMPS
+# Annotation_tools constants
+ANNOTATION_ARROW_HEAD_LENGTH = 1
+ANNOTATION_ARROW_HEAD_ANGLE = 30  # in degrees
+ANNOTATION_ARROW_BASE_WIDTH_VALUE = 1
+ANNOTATION_ARROW_SCALE_RANGE = (ANNOTATION_ARROW_BASE_WIDTH_VALUE, ANNOTATION_ARROW_BASE_WIDTH_VALUE * 10)
+
+
+# time
 FPS = 25               # Fréquence d’échantillonnage (frames per second)
-#UPDATE_FREQUENCY = 5  # Fréquence de mise à jour des données générées (orientation, vitesse, etc.)
 LENGTH_FIRST_HALF = 45 # Minutes
 LENGTH_SECOND_HALF = 45
 LENGTH_OVERTIME_HALF = 15
