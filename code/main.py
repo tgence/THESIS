@@ -3,6 +3,7 @@
 import os
 import sys
 import numpy as np
+import pandas as pd
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton, QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup, QRadioButton, QGroupBox
 )
@@ -43,7 +44,6 @@ home_ids           = data['home_ids']
 away_ids           = data['away_ids']
 player_ids         = data['player_ids']
 player_orientations= data['orientations']
-player_velocities  = data['velocities']
 dsam               = data['dsam']
 home_colors        = data['home_colors']
 away_colors        = data['away_colors']
@@ -53,43 +53,51 @@ n_frames_secondHalf= data['n2']
 n_frames           = data['ntot']
 last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
 
-print(n_frames_firstHalf, n_frames_secondHalf, n_frames)
+"""print(n_frames_firstHalf, n_frames_secondHalf, n_frames)
 # print la shape de dsam
 print("Shape of dsam:", {side: {pid: len(data) for pid, data in dsam[side].items()} for side in dsam})
 # Print le nombre d element squ il y a pr chaque équipe et person id
 print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['firstHalf']['D']))
-print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['secondHalf']['D']))
+print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['secondHalf']['D']))"""
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
 
-"""# teams_df : le DataFrame issu de load_data (contient PersonId, ShirtNumber, side)
-away_11_row = teams_df[(teams_df["side"] == "away") & (teams_df["ShirtNumber"].astype(str) == "11")]
-if away_11_row.empty:
+"""
+print(teams_df.head())
+row_away11 = teams_df[(teams_df["side"] == "Away") & (teams_df["ShirtNumber"].astype(str) == "11")]
+if row_away11.empty:
     raise Exception("Aucun joueur away avec le numéro 11 trouvé.")
-pid_away_11 = away_11_row.iloc[0]["PersonId"]
-print("PersonId away 11 =", pid_away_11)
+pid_away11 = row_away11.iloc[0]["PersonId"]
 
-FPS = 25  # adapte si différent dans ton config
-start_minute = 1
-end_minute = 2
-start_frame = start_minute * 60 * FPS
-end_frame = end_minute * 60 * FPS
+FPS = 25  # à adapter si besoin
+start_frame = 1 * 60 * FPS
+end_frame = 2 * 60 * FPS
 
-# player_orientations et player_velocities sont indexés par PersonId, pas ShirtNumber
-orientations = player_orientations[pid_away_11][start_frame:end_frame]
-velocities = player_velocities[pid_away_11][start_frame:end_frame]
-time_minutes = [i / FPS / 60 for i in range(start_frame, end_frame)]
-import pandas as pd
-df = pd.DataFrame({
-    "minute": time_minutes,
-    "orientation_deg": np.degrees(orientations),
-    "velocity_m_s": velocities
-})
+# Attention à la façon dont tes données sont structurées : 
+# Pour les positions, il te faut le half et l'index local à chaque half
+n1 = n_frames_firstHalf  # Nombre de frames firstHalf
+frames = []
+for abs_f in range(start_frame, end_frame):
+    if abs_f < n1:
+        half = "firstHalf"
+        local_idx = abs_f
+    else:
+        half = "secondHalf"
+        local_idx = abs_f - n1
+    # Récupérer le bon XY dans la matrice :
+    j = home_ids.index(pid_away11) if pid_away11 in home_ids else away_ids.index(pid_away11)
+    xy = xy_objects[half]['Away'].xy
+    x = xy[local_idx, 2*j]
+    y = xy[local_idx, 2*j+1]
+    orientation = np.degrees(player_orientations[pid_away11][abs_f])
+    S = dsam['Away'][pid_away11][half]['S'][local_idx]
+    frames.append((abs_f / FPS / 60, x, y, orientation, S))
+
+df = pd.DataFrame(frames, columns=["minute", "x", "y", "orientation", "speed"] )
 print(df.head())
-
-df.to_csv("away_11_ori_velo.csv", index=False)"""
-
+df.to_csv("away_11_xy.csv", index=False)
+"""
 
 
 
@@ -413,7 +421,7 @@ class MainWindow(QWidget):
                     if not np.isnan(x) and not np.isnan(y):
                         self.pitch_widget.draw_player(
                         x=x, y=y, main_color=main, sec_color=sec, num_color=numc, number=num,
-                        angle=player_orientations[pid][frame_number], velocity=player_velocities[pid][frame_number],
+                        angle=player_orientations[pid][frame_number], velocity=dsam[side][pid][half]['S'][idx],
                         display_orientation=self.orientation_checkbox.isChecked(),
                         z_offset=(10 if side == "Home" else 50) + i,
                     )

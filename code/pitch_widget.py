@@ -122,7 +122,9 @@ class PitchWidget(QWidget):
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, velocity=0, display_orientation=False, z_offset=10):
         # Dessin d’un joueur avec orientation
+        min_velocity = 0.01 # m/s to avoid display bugs
         if display_orientation and angle is not None and velocity is not None:
+            velocity = max(velocity, min_velocity)
             arrow_length = velocity * VELOCITY_ARROW_SCALE
             arrow_x_start = x + PLAYER_OUTER_RADIUS * math.cos(angle)
             arrow_y_start = y + PLAYER_OUTER_RADIUS * math.sin(angle)

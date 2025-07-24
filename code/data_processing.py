@@ -49,14 +49,13 @@ def extract_dsam_from_xml(file_pos, player_ids, teamid_map):
         if side is None or person_id not in player_ids[side]:
             continue
         frames = frameset.findall('Frame')
-        data = {k: [] for k in ['D', 'S', 'A', 'M', 'N']}
+        data = {k: [] for k in ['D', 'S', 'A', 'M']}
         for fr in frames:
             data['D'].append(float(fr.get('D', 'nan')))
             s_kmh = float(fr.get('S', 'nan'))
             data['S'].append(s_kmh / 3.6)   # km/h -> m/s
             data['A'].append(float(fr.get('A', 'nan')))
             data['M'].append(float(fr.get('M', 'nan')))
-            data['N'].append(int(fr.get('N')))
         # Construction multi-segment
         if person_id not in dsam[side]:
             dsam[side][person_id] = {}
@@ -110,7 +109,7 @@ def load_data(path, file_pos, file_info, file_events):
     )
     # 6. Autres traitements
     orientations = compute_orientations(xy, player_ids)
-    velocities = compute_velocities(xy, player_ids)
+    #velocities = compute_velocities(xy, player_ids)
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
@@ -122,7 +121,7 @@ def load_data(path, file_pos, file_info, file_events):
         'events': events, 'pitch_info': pitch,
         'teams_df': teams_df, 'home_name': home_name, 'away_name': away_name,
         'home_ids': home_ids, 'away_ids': away_ids,
-        'player_ids': player_ids, 'orientations': orientations, 'velocities': velocities, 'dsam': dsam,
+        'player_ids': player_ids, 'orientations': orientations, 'dsam': dsam,
         'home_colors': home_colors, 'away_colors': away_colors,
         'id2num': id2num,
         'n1': n1, 'n2': n2, 'ntot': ntot
