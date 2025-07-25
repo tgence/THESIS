@@ -5,13 +5,13 @@ import sys
 import numpy as np
 import pandas as pd
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton, QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup, QRadioButton, QGroupBox
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton, QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup, QRadioButton, QGroupBox, QListWidget, QListWidgetItem, QDialog
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent
 from PyQt5.QtGui import QColor
 from pitch_widget import PitchWidget
 from annotation_tools import ArrowAnnotationManager
-from data_processing import load_data, build_player_out_frames
+from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events
 from visualization import format_match_time
 from config import *
 
@@ -54,51 +54,17 @@ n_frames           = data['ntot']
 last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
 player_out_frames  = build_player_out_frames(events, FPS, n_frames_firstHalf)
 
-"""print(n_frames_firstHalf, n_frames_secondHalf, n_frames)
-# print la shape de dsam
-print("Shape of dsam:", {side: {pid: len(data) for pid, data in dsam[side].items()} for side in dsam})
-# Print le nombre d element squ il y a pr chaque équipe et person id
-print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['firstHalf']['D']))
-print("Number of elements in the first element of dsam['home'][pid] at frame 0:", len(dsam['Home'][home_ids[0]]['secondHalf']['D']))"""
+# Dans ton main.py ou data_processing.py après load_data()
+"""for segment in events:
+    for team in events[segment]:
+        df = events[segment][team].events
+        print(f"== {segment} | {team} ==")
+        print(df['eID'].value_counts())
+        print(df[['eID','minute','second','outcome']].head(10))"""
+
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
-
-"""
-print(teams_df.head())
-row_away11 = teams_df[(teams_df["side"] == "Away") & (teams_df["ShirtNumber"].astype(str) == "11")]
-if row_away11.empty:
-    raise Exception("Aucun joueur away avec le numéro 11 trouvé.")
-pid_away11 = row_away11.iloc[0]["PersonId"]
-
-FPS = 25  # à adapter si besoin
-start_frame = 1 * 60 * FPS
-end_frame = 2 * 60 * FPS
-
-# Attention à la façon dont tes données sont structurées : 
-# Pour les positions, il te faut le half et l'index local à chaque half
-n1 = n_frames_firstHalf  # Nombre de frames firstHalf
-frames = []
-for abs_f in range(start_frame, end_frame):
-    if abs_f < n1:
-        half = "firstHalf"
-        local_idx = abs_f
-    else:
-        half = "secondHalf"
-        local_idx = abs_f - n1
-    # Récupérer le bon XY dans la matrice :
-    j = home_ids.index(pid_away11) if pid_away11 in home_ids else away_ids.index(pid_away11)
-    xy = xy_objects[half]['Away'].xy
-    x = xy[local_idx, 2*j]
-    y = xy[local_idx, 2*j+1]
-    orientation = np.degrees(player_orientations[pid_away11][abs_f])
-    S = dsam['Away'][pid_away11][half]['S'][local_idx]
-    frames.append((abs_f / FPS / 60, x, y, orientation, S))
-
-df = pd.DataFrame(frames, columns=["minute", "x", "y", "orientation", "speed"] )
-print(df.head())
-df.to_csv("away_11_xy.csv", index=False)
-"""
 
 
 
@@ -158,6 +124,8 @@ class MainWindow(QWidget):
         left_panel = QVBoxLayout()
         self.pitch_widget = PitchWidget(X_MIN, X_MAX, Y_MIN, Y_MAX)
         left_panel.addWidget(self.pitch_widget)
+        self.actions_list_widget = None
+
 
         # Annotation manager avec flèche noire par défaut
         self.annotation_manager = ArrowAnnotationManager(self.pitch_widget.scene)
@@ -216,6 +184,11 @@ class MainWindow(QWidget):
         # ----------- OUTILS ANNOTATION -----------
         tools_panel = QVBoxLayout()
         tools_panel.addWidget(QLabel("Annotation"))
+
+        self.match_actions_button = QPushButton("Match Actions")
+        self.match_actions_button.clicked.connect(self.show_match_actions)
+        tools_panel.addWidget(self.match_actions_button)
+
 
         self.select_button = QPushButton("Sélection")
         self.select_button.setCheckable(True)
@@ -285,6 +258,24 @@ class MainWindow(QWidget):
         self.set_tool_mode("select")
 
 
+    def show_match_actions(self):
+        actions = extract_match_actions_from_events(events, FPS)
+        actions_list_widget = QListWidget()
+        for act in actions:
+            item = QListWidgetItem(f"{act['emoji']} {act['label']} - {act['minute']}:{act['second']:02d} ({act['team']})")
+            item.setData(Qt.UserRole, act['frame'])
+            actions_list_widget.addItem(item)
+        actions_list_widget.itemClicked.connect(self.goto_action_frame)
+        dlg = QDialog(self)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(actions_list_widget)
+        dlg.setWindowTitle("Match Actions")
+        dlg.setMinimumWidth(320)
+        dlg.exec_()
+
+    def goto_action_frame(self, item):
+        frame = item.data(Qt.UserRole)
+        self.frame_slider.setValue(frame)
 
     def set_tool_mode(self, mode):
         self.current_tool = mode

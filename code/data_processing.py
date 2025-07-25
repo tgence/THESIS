@@ -2,9 +2,26 @@
  
 import os
 import pandas as pd
+import numpy as np
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
 from utils import compute_orientations, compute_velocities
+from config import *
+
+
+"""EVENT_WHITELIST = {
+    "ShotAtGoal_SuccessfulShot": {"emoji": "⚽️", "label": "Goal"},
+    "GoalKick_Play_Pass": {"emoji": "🦶", "label": "Goal Kick"},
+    "FreeKick_Play_Cross": {"emoji": "🎯", "label": "Free Kick"},
+    "FreeKick_Play_Pass": {"emoji": "🎯", "label": "Free Kick"},
+    "FreeKick_ShotAtGoal_BlockedShot": {"emoji": "🎯", "label": "Free Kick"},
+    "CornerKick_Play_Cross": {"emoji": "🟩", "label": "Corner"},
+    "Caution": {"emoji": "🟨", "label": "Yellow Card"},
+    # "CautionTeamofficial": {"emoji": "🟨", "label": "Yellow Card (Staff)"}, # Optionnel
+    # Pas de balise explicite pour Red Card/Expulsion !
+    # Penalty à traiter à part avec qualifier
+}"""
+
 
 def safe_color(val, fallback='#aaaaaa'):
     if isinstance(val, str) and (val.startswith('#') or len(val)==6):
@@ -21,7 +38,6 @@ def get_player_color_dict(df):
         d[pid] = (main, sec, numc)
     return d
 
-import numpy as np
 
 def extract_dsam_from_xml(file_pos, player_ids, teamid_map, n_frames_per_half):
     """
@@ -110,6 +126,42 @@ def build_player_out_frames(events_objects, fps, n_frames_firstHalf):
                     out_player_frames[pid] = frame
     return out_player_frames
 
+def extract_match_actions_from_events(events, FPS):
+    ACTIONS = []
+    for segment in events:
+        for team in events[segment]:
+            df = events[segment][team].events
+            for _, row in df.iterrows():
+                eid = str(row.get('eID', ''))
+                qualifier = str(row.get('qualifier', '')).lower()
+                minute = int(row.get("minute", 0))
+                second = int(row.get("second", 0))
+                frame = int((minute * 60 + second) * FPS)
+                
+                # But classique
+                if eid == "ShotAtGoal_SuccessfulShot" and "penalt" not in qualifier:
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Goal", "emoji": "⚽️"})
+                # Penalty marqué
+                elif eid == "ShotAtGoal_SuccessfulShot" and "penalt" in qualifier:
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Penalty Goal", "emoji": "🅿️"})
+                # Dégagement 6m
+                elif eid == "GoalKick_Play_Pass":
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Goal Kick", "emoji": "🦶"})
+                # Coup franc
+                elif eid in ("FreeKick_Play_Cross", "FreeKick_Play_Pass", "FreeKick_ShotAtGoal_BlockedShot"):
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Free Kick", "emoji": "🎯"})
+                # Corner
+                elif eid == "CornerKick_Play_Cross":
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Corner", "emoji": "🟩"})
+                # Jaune
+                elif eid == "Caution":
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Yellow Card", "emoji": "🟨"})
+                # Rouge
+                elif ("expuls" in qualifier) or ("red" in qualifier) or eid.lower() == "expulsion":
+                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Red Card", "emoji": "🟥"})
+    ACTIONS = sorted(ACTIONS, key=lambda x: x["frame"])
+    return ACTIONS
+
 
 
 def load_data(path, file_pos, file_info, file_events):
@@ -123,7 +175,10 @@ def load_data(path, file_pos, file_info, file_events):
         os.path.join(path, file_events),
         os.path.join(path, file_info)
     )
-  
+
+    actions = extract_match_actions_from_events(events, FPS)
+    """for act in actions:
+        print(f"{act['emoji']} {act['label']} - {act['minute']}:{act['second']:02d} ({act['team']}) eID={act.get('eID', '')}")"""   
     # 3. Teams/players info
     tree = ET.parse(os.path.join(path, file_info))
     root = tree.getroot()

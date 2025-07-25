@@ -9,6 +9,19 @@ import xml.etree.ElementTree as ET
 # Constants
 COL_FACE = "lightgrey"
 plt.style.use("ggplot")
+EVENT_WHITELIST = {
+    "ShotAtGoal": {"emoji": "⚽️", "label": "Goal"},
+    "Penalty": {"emoji": "🅿️", "label": "Penalty"},
+    "CornerKick": {"emoji": "🟩", "label": "Corner"},
+    "GoalKick": {"emoji": "🦶", "label": "Goal Kick"},
+    "FreeKick": {"emoji": "🎯", "label": "Free Kick"},
+    "KickOff": {"emoji": "🕛", "label": "Kick Off"},
+    "Caution": {"emoji": "🟨", "label": "Yellow Card"},
+    "Expulsion": {"emoji": "🟥", "label": "Red Card"},
+    "Substitution": {"emoji": "🔄", "label": "Substitution"},
+    # ajoute d’autres si besoin
+}
+
 
 def load_data(path, file_name_pos, file_name_infos, file_name_events):
     xy_objects, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
