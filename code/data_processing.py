@@ -3,6 +3,7 @@
 import os
 import pandas as pd
 import numpy as np
+import ast
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
 from utils import compute_orientations, compute_velocities
@@ -126,45 +127,101 @@ def build_player_out_frames(events_objects, fps, n_frames_firstHalf):
                     out_player_frames[pid] = frame
     return out_player_frames
 
-def extract_match_actions_from_events(events, FPS):
+def extract_match_actions_from_events(events, FPS=25):
+    """
+    Extrait les actions importantes à partir des events DFL/Floodlight, 
+    les renvoie sous forme de liste triée de dicts avec frame, label, emoji, etc.
+    """
     ACTIONS = []
     for segment in events:
         for team in events[segment]:
             df = events[segment][team].events
             for _, row in df.iterrows():
-                eid = str(row.get('eID', ''))
-                qualifier = str(row.get('qualifier', '')).lower()
-                minute = int(row.get("minute", 0))
-                second = int(row.get("second", 0))
+                eid = row.get('eID', None)
+                # Accepte int ou str, conversion homogène
+                eid_str = str(eid) if eid is not None else ""
+                minute = int(row.get("minute", 0) or 0)
+                second = int(row.get("second", 0) or 0)
                 frame = int((minute * 60 + second) * FPS)
-                
-                # But classique
-                if eid == "ShotAtGoal_SuccessfulShot" and "penalt" not in qualifier:
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Goal", "emoji": "⚽️"})
-                # Penalty marqué
-                elif eid == "ShotAtGoal_SuccessfulShot" and "penalt" in qualifier:
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Penalty Goal", "emoji": "🅿️"})
+                qualifier = row.get('qualifier', '')
+
+                # Buts
+                if eid_str =="ShotAtGoal_SuccessfulShot":  # "1" = but dans certaines bases
+                    ACTIONS.append({
+                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                        "label": "GOAL", "emoji": "", "eID": eid
+                    })
                 # Dégagement 6m
-                elif eid == "GoalKick_Play_Pass":
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Goal Kick", "emoji": "🦶"})
+                elif eid_str in ["GoalKick_Play_Pass", "2"]:
+                    ACTIONS.append({
+                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                        "label": "Goal Kick", "emoji": "🦶", "eID": eid
+                    })
                 # Coup franc
-                elif eid in ("FreeKick_Play_Cross", "FreeKick_Play_Pass", "FreeKick_ShotAtGoal_BlockedShot"):
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Free Kick", "emoji": "🎯"})
+                elif eid_str in ["FreeKick_Play_Cross", "FreeKick_Play_Pass", "FreeKick_ShotAtGoal_BlockedShot", "3"]:
+                    ACTIONS.append({
+                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                        "label": "Free Kick", "emoji": "🎯", "eID": eid
+                    })
                 # Corner
-                elif eid == "CornerKick_Play_Cross":
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Corner", "emoji": "🟩"})
-                # Jaune
-                elif eid == "Caution":
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Yellow Card", "emoji": "🟨"})
-                # Rouge
-                elif ("expuls" in qualifier) or ("red" in qualifier) or eid.lower() == "expulsion":
-                    ACTIONS.append({"frame": frame, "segment": segment, "team": team, "minute": minute, "second": second, "label": "Red Card", "emoji": "🟥"})
+                elif eid_str in ["CornerKick_Play_Cross", "4"]:
+                    ACTIONS.append({
+                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                        "label": "Corner", "emoji": "🟩", "eID": eid
+                    })
+                # Cartons jaunes/rouges
+                elif eid_str in ["Caution", "6"]:
+                    # Robustifier la détection du rouge
+                    is_red = False
+                    qual = None
+                    if isinstance(qualifier, dict):
+                        qual = qualifier
+                    elif isinstance(qualifier, str):
+                        try:
+                            qual = ast.literal_eval(qualifier)
+                        except Exception:
+                            qual = {"cardcolor": qualifier}
+                    # Vérifie plusieurs variantes de clé/valeur
+                    cardcolor = ""
+                    if isinstance(qual, dict):
+                        # Tu veux capter 'cardcolor', 'CardColor', 'CardRating', etc.
+                        for key in ['cardcolor', 'CardColor', 'CardRating']:
+                            cardcolor = str(qual.get(key, '')).lower()
+                            if cardcolor:
+                                break
+                    if 'red' in cardcolor or 'red' in str(qualifier).lower():
+                        is_red = True
+                    else:
+                        is_red = False
+                    if is_red:
+                        ACTIONS.append({
+                            "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                            "label": "Red Card", "emoji": "🟥", "eID": eid
+                        })
+                    else:
+                        ACTIONS.append({
+                            "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                            "label": "Yellow Card", "emoji": "🟨", "eID": eid
+                        })
+                # Penalty (optionnel)
+                elif eid_str in ["Penalty_Play_Pass", "Penalty_ShotAtGoal_BlockedShot", "Penalty_ShotAtGoal_SuccessfulShot"]:
+                    ACTIONS.append({
+                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
+                        "label": "Penalty", "emoji": "⚪", "eID": eid
+                    })
+
+    # Tri par frame
     ACTIONS = sorted(ACTIONS, key=lambda x: x["frame"])
     return ACTIONS
 
-
-
 def load_data(path, file_pos, file_info, file_events):
+    # create a csv named a.csv then load all_events_floodlight.csv and delete all rows with eID == 'Play_Pass' exactly not containing these word because other ids have partly these words
+    df = pd.read_csv(os.path.join(path, "all_events_floodlight.csv"))
+    df = df[df['eID'] != 'Play_Pass']
+    df = df[df['eID'] != 'TacklingGame']
+    df = df[df['eID'] != 'OtherBallAction']
+    df.to_csv(os.path.join(path, "a.csv"), index=False)
+
     # 1. Extraction floodlight (positions, etc.)
     xy, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
         os.path.join(path, file_pos),

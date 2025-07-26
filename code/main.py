@@ -190,29 +190,29 @@ class MainWindow(QWidget):
         tools_panel.addWidget(self.match_actions_button)
 
 
-        self.select_button = QPushButton("Sélection")
+        self.select_button = QPushButton("Selection")
         self.select_button.setCheckable(True)
         self.select_button.setChecked(True)
         self.select_button.clicked.connect(lambda: self.set_tool_mode("select"))
         tools_panel.addWidget(self.select_button)
 
-        self.arrow_button = QPushButton("Flèche")
+        self.arrow_button = QPushButton("Arrow")
         self.arrow_button.setCheckable(True)
         self.arrow_button.setChecked(False)
         self.arrow_button.clicked.connect(lambda: self.set_tool_mode("arrow"))
         tools_panel.addWidget(self.arrow_button)
 
-        self.curve_button = QPushButton("Courbé")
+        self.curve_button = QPushButton("Curved Arrow")
         self.curve_button.setCheckable(True)
         self.curve_button.setChecked(False)
         self.curve_button.clicked.connect(lambda: self.set_tool_mode("curve"))
         tools_panel.addWidget(self.curve_button)
 
-        self.color_button = QPushButton("Couleur Flèche")
+        self.color_button = QPushButton("Arrow Color")
         self.color_button.clicked.connect(self.choose_arrow_color)
         tools_panel.addWidget(self.color_button)
 
-        self.delete_button = QPushButton("Supprimer dernière flèche")
+        self.delete_button = QPushButton("Delete Last Arrow")
         self.delete_button.clicked.connect(self.delete_last_arrow)
         tools_panel.addWidget(self.delete_button)
 
@@ -223,15 +223,15 @@ class MainWindow(QWidget):
         self.width_spin.setValue(ANNOTATION_ARROW_BASE_WIDTH_VALUE) 
 
         self.width_spin.valueChanged.connect(self.set_arrow_width)
-        tools_panel.addWidget(QLabel("Largeur du trait"))
+        tools_panel.addWidget(QLabel("Arrow Width"))
         tools_panel.addWidget(self.width_spin)
 
-        style_group = QGroupBox("Type de ligne")
+        style_group = QGroupBox("Line Style")
         style_layout = QVBoxLayout()
         self.style_buttons = QButtonGroup()
-        solid_rb = QRadioButton("Normale")
-        dotted_rb = QRadioButton("Pointillé")
-        zigzag_rb = QRadioButton("Serpentin")
+        solid_rb = QRadioButton("Solid")
+        dotted_rb = QRadioButton("Dotted")
+        zigzag_rb = QRadioButton("Zigzag")
         self.style_buttons.addButton(solid_rb, 0)
         self.style_buttons.addButton(dotted_rb, 1)
         self.style_buttons.addButton(zigzag_rb, 2)
