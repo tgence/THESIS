@@ -6,7 +6,7 @@ import numpy as np
 import ast
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
-from utils import compute_orientations, compute_velocities
+from utils import compute_orientations
 from config import *
 
 
@@ -155,8 +155,8 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                 
                 # Mapping des événements
                 action_map = {
-                    "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "⚽"},
-                    "1": {"label": "GOAL", "emoji": "⚽"},
+                    "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "\u26BD"},
+                    "1": {"label": "GOAL", "emoji": "\u26BD"},
                     "GoalKick_Play_Pass": {"label": "Goal Kick", "emoji": "🦶"},
                     "2": {"label": "Goal Kick", "emoji": "🦶"},
                     "FreeKick_Play_Cross": {"label": "Free Kick", "emoji": "🎯"},

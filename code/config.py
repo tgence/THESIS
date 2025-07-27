@@ -47,8 +47,8 @@ MIN_TIMELINE_WIDTH = 400
 EXTRA_TIMELINE_PADDING = 60
 TIMELINE_SLIDER_HEIGHT = 24    # Hauteur totale du widget slider
 TIMELINE_GROOVE_HEIGHT = TIMELINE_SLIDER_HEIGHT - TIMELINE_SLIDER_HEIGHT//3     # Epaisseur de la barre (très fin)
-TIMELINE_HANDLE_WIDTH = TIMELINE_GROOVE_HEIGHT / 2      # Largeur du curseur (horizontalement)
-TIMELINE_HANDLE_HEIGHT = TIMELINE_GROOVE_HEIGHT + TIMELINE_GROOVE_HEIGHT/2     # Epaisseur du curseur (verticalement, donc un rectangle "épais")
+TIMELINE_HANDLE_WIDTH = TIMELINE_GROOVE_HEIGHT // 2      # Largeur du curseur (horizontalement)
+TIMELINE_HANDLE_HEIGHT = TIMELINE_GROOVE_HEIGHT + TIMELINE_GROOVE_HEIGHT//2     # Epaisseur du curseur (verticalement, donc un rectangle "épais")
 NAV_BUTTON_WIDTH = 35
 NAV_BUTTON_HEIGHT = 30
 
