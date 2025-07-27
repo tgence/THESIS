@@ -16,7 +16,7 @@ def load_data(path, file_name_pos, file_name_infos, file_name_events):
     xy_objects, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
         f"{path}{file_name_pos}", f"{path}{file_name_infos}"
     )
-    print(possession)
+    print(possession)   
     print(teamsheets)
     events, _, _ = read_event_data_xml(f"{path}{file_name_events}", f"{path}{file_name_infos}")
 

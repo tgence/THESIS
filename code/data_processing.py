@@ -127,51 +127,64 @@ def build_player_out_frames(events_objects, fps, n_frames_firstHalf):
                     out_player_frames[pid] = frame
     return out_player_frames
 
-def extract_match_actions_from_events(events, FPS=25):
+def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
     """
-    Extrait les actions importantes à partir des events DFL/Floodlight, 
-    les renvoie sous forme de liste triée de dicts avec frame, label, emoji, etc.
+    Extrait les actions importantes avec le bon calcul de frame selon la mi-temps
     """
     ACTIONS = []
+    
     for segment in events:
+        # Calcul de l'offset selon la mi-temps
+        frame_offset = 0
+        if segment.lower() in ["secondhalf", "second_half", "ht2"]:
+            frame_offset = n_frames_firstHalf
+            
         for team in events[segment]:
             df = events[segment][team].events
+            
             for _, row in df.iterrows():
                 eid = row.get('eID', None)
-                # Accepte int ou str, conversion homogène
                 eid_str = str(eid) if eid is not None else ""
                 minute = int(row.get("minute", 0) or 0)
                 second = int(row.get("second", 0) or 0)
-                frame = int((minute * 60 + second) * FPS)
+                
+                # Frame avec offset selon la mi-temps
+                frame = int((minute * 60 + second) * FPS) + frame_offset
+                
                 qualifier = row.get('qualifier', '')
-
-                # Buts
-                if eid_str =="ShotAtGoal_SuccessfulShot":  # "1" = but dans certaines bases
-                    ACTIONS.append({
-                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                        "label": "GOAL", "emoji": "", "eID": eid
+                
+                # Mapping des événements
+                action_map = {
+                    "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "⚽"},
+                    "1": {"label": "GOAL", "emoji": "⚽"},
+                    "GoalKick_Play_Pass": {"label": "Goal Kick", "emoji": "🦶"},
+                    "2": {"label": "Goal Kick", "emoji": "🦶"},
+                    "FreeKick_Play_Cross": {"label": "Free Kick", "emoji": "🎯"},
+                    "FreeKick_Play_Pass": {"label": "Free Kick", "emoji": "🎯"},
+                    "FreeKick_ShotAtGoal_BlockedShot": {"label": "Free Kick", "emoji": "🎯"},
+                    "3": {"label": "Free Kick", "emoji": "🎯"},
+                    "CornerKick_Play_Cross": {"label": "Corner", "emoji": "🟩"},
+                    "4": {"label": "Corner", "emoji": "🟩"},
+                    "Penalty_Play_Pass": {"label": "Penalty", "emoji": "⚪"},
+                    "Penalty_ShotAtGoal_BlockedShot": {"label": "Penalty", "emoji": "⚪"},
+                    "Penalty_ShotAtGoal_SuccessfulShot": {"label": "Penalty", "emoji": "⚪"},
+                }
+                
+                if eid_str in action_map:
+                    action = action_map[eid_str].copy()
+                    action.update({
+                        "frame": frame,
+                        "segment": segment,
+                        "team": team,
+                        "minute": minute,
+                        "second": second,
+                        "eID": eid,
+                        "display_time": format_display_time(minute, second, segment)
                     })
-                # Dégagement 6m
-                elif eid_str in ["GoalKick_Play_Pass", "2"]:
-                    ACTIONS.append({
-                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                        "label": "Goal Kick", "emoji": "🦶", "eID": eid
-                    })
-                # Coup franc
-                elif eid_str in ["FreeKick_Play_Cross", "FreeKick_Play_Pass", "FreeKick_ShotAtGoal_BlockedShot", "3"]:
-                    ACTIONS.append({
-                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                        "label": "Free Kick", "emoji": "🎯", "eID": eid
-                    })
-                # Corner
-                elif eid_str in ["CornerKick_Play_Cross", "4"]:
-                    ACTIONS.append({
-                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                        "label": "Corner", "emoji": "🟩", "eID": eid
-                    })
-                # Cartons jaunes/rouges
+                    ACTIONS.append(action)
+                
+                # Cartons (logique spéciale)
                 elif eid_str in ["Caution", "6"]:
-                    # Robustifier la détection du rouge
                     is_red = False
                     qual = None
                     if isinstance(qualifier, dict):
@@ -179,48 +192,63 @@ def extract_match_actions_from_events(events, FPS=25):
                     elif isinstance(qualifier, str):
                         try:
                             qual = ast.literal_eval(qualifier)
-                        except Exception:
+                        except:
                             qual = {"cardcolor": qualifier}
-                    # Vérifie plusieurs variantes de clé/valeur
-                    cardcolor = ""
+                    
                     if isinstance(qual, dict):
-                        # Tu veux capter 'cardcolor', 'CardColor', 'CardRating', etc.
                         for key in ['cardcolor', 'CardColor', 'CardRating']:
                             cardcolor = str(qual.get(key, '')).lower()
                             if cardcolor:
                                 break
+                    
                     if 'red' in cardcolor or 'red' in str(qualifier).lower():
                         is_red = True
-                    else:
-                        is_red = False
-                    if is_red:
-                        ACTIONS.append({
-                            "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                            "label": "Red Card", "emoji": "🟥", "eID": eid
-                        })
-                    else:
-                        ACTIONS.append({
-                            "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                            "label": "Yellow Card", "emoji": "🟨", "eID": eid
-                        })
-                # Penalty (optionnel)
-                elif eid_str in ["Penalty_Play_Pass", "Penalty_ShotAtGoal_BlockedShot", "Penalty_ShotAtGoal_SuccessfulShot"]:
-                    ACTIONS.append({
-                        "frame": frame, "segment": segment, "team": team, "minute": minute, "second": second,
-                        "label": "Penalty", "emoji": "⚪", "eID": eid
-                    })
-
+                    
+                    action = {
+                        "frame": frame,
+                        "segment": segment,
+                        "team": team,
+                        "minute": minute,
+                        "second": second,
+                        "eID": eid,
+                        "label": "Red Card" if is_red else "Yellow Card",
+                        "emoji": "🟥" if is_red else "🟨",
+                        "display_time": format_display_time(minute, second, segment)
+                    }
+                    ACTIONS.append(action)
+    
     # Tri par frame
     ACTIONS = sorted(ACTIONS, key=lambda x: x["frame"])
     return ACTIONS
 
+def format_display_time(minute, second, segment):
+    """
+    Formate le temps d'affichage selon la mi-temps avec gestion du temps additionnel
+    """
+    # Temps de base selon la mi-temps
+    if segment.lower() in ["firsthalf", "first_half", "ht1"]:
+        base_minutes = 0
+        half_duration = 45
+    elif segment.lower() in ["secondhalf", "second_half", "ht2"]:
+        base_minutes = 45
+        half_duration = 45
+    else:
+        # Prolongations ou autres
+        base_minutes = 90
+        half_duration = 15
+    
+    total_minutes = base_minutes + minute
+    
+    # Si on dépasse la durée normale de la mi-temps
+    if minute >= half_duration:
+        extra_time_minutes = minute - half_duration
+        return f"{base_minutes + half_duration}:00+{int(extra_time_minutes):02d}:{int(second):02d}"
+    else:
+        return f"{total_minutes:02d}:{second:02d}"
+    
+
+
 def load_data(path, file_pos, file_info, file_events):
-    # create a csv named a.csv then load all_events_floodlight.csv and delete all rows with eID == 'Play_Pass' exactly not containing these word because other ids have partly these words
-    df = pd.read_csv(os.path.join(path, "all_events_floodlight.csv"))
-    df = df[df['eID'] != 'Play_Pass']
-    df = df[df['eID'] != 'TacklingGame']
-    df = df[df['eID'] != 'OtherBallAction']
-    df.to_csv(os.path.join(path, "a.csv"), index=False)
 
     # 1. Extraction floodlight (positions, etc.)
     xy, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
@@ -233,9 +261,6 @@ def load_data(path, file_pos, file_info, file_events):
         os.path.join(path, file_info)
     )
 
-    actions = extract_match_actions_from_events(events, FPS)
-    """for act in actions:
-        print(f"{act['emoji']} {act['label']} - {act['minute']}:{act['second']:02d} ({act['team']}) eID={act.get('eID', '')}")"""   
     # 3. Teams/players info
     tree = ET.parse(os.path.join(path, file_info))
     root = tree.getroot()
