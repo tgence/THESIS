@@ -72,14 +72,27 @@ class ActionMarker(QWidget):
         if not font.exactMatch():
             font = QFont("Arial", 14)
         painter.setFont(font)
-        painter.setPen(QColor(0, 0, 0, 50))
-        painter.drawText(self.rect().adjusted(1, 1, 1, 1), Qt.AlignCenter, self.action['emoji'])
+
+        # Surbrillance si sélectionné
+        parent = self.parentWidget()
+        selected = False
+        if parent is not None and hasattr(parent.parentWidget(), "selected_frame"):
+            selected = self.action['frame'] == parent.parentWidget().selected_frame
+        if selected:
+            size = self.width()  # Carré qui occupe tout le widget
+            painter.setBrush(QColor(33, 150, 243, 50))  # bleu semi-transparent
+            painter.setPen(QPen(QColor(33, 150, 243), 2))  # contour bleu fin
+            painter.drawRect(0, 0, size, size)
+        else:
+            painter.setPen(QColor(0, 0, 0, 50))
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(self.rect(), Qt.AlignCenter, self.action['emoji'])
 
+
+
+        
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            print(f"[ActionMarker] Clicked on emoji at frame {self.action['frame']}")
             self.clicked.emit(self.action['frame'])
 
 
@@ -99,6 +112,8 @@ class TimelineWidget(QWidget):
         self.filtered_types = []
         self.filtered_actions = []
         self.zoom_widget = None
+        self.selected_frame = None
+
 
         self._setup_ui()
 
@@ -173,29 +188,38 @@ class TimelineWidget(QWidget):
     def _update_time_label(self, frame, time_str):
         self.time_label.setText(time_str)
 
-    def show_zoomed_markers(self, center_frame, window=10*60*FPS):
-        print(f"[TimelineWidget] show_zoomed_markers called with frame={center_frame}, window={window}")
-        actions_zoom = [a for a in self.filtered_actions if abs(a['frame']-center_frame) <= window//2]
-        print(f"[TimelineWidget] actions_zoom count: {len(actions_zoom)}")
-        if not actions_zoom:
-            print("[TimelineWidget] No actions to show, hiding zoom")
+    def show_zoomed_markers(self, center_frame, max_actions=10):
+
+        # Trie par ordre d'apparition (frame)
+        all_actions = sorted(self.filtered_actions, key=lambda a: a['frame'])
+        idx = next((i for i, a in enumerate(all_actions) if a['frame'] == center_frame), None)
+        if idx is None:
             self.hide_zoomed_markers()
             return
 
-        # CRUCIAL: always clean previous widget
+        # Prend jusqu'à 4 avant, 5 après (centré, 10 max)
+        start = max(0, idx - 4)
+        end = min(len(all_actions), idx + 6)
+        actions_zoom = all_actions[start:end]
+
+        if not actions_zoom:
+            self.hide_zoomed_markers()
+            return
+
+        # Toujours clean le widget précédent
         self.hide_zoomed_markers()
 
-        print("[TimelineWidget] Creating new ZoomedMarkersWidget")
-        self.zoom_widget = ZoomedMarkersWidget(actions_zoom, center_frame, window, self.n_frames, self)
+        self.zoom_widget = ZoomedMarkersWidget(actions_zoom, center_frame, self.n_frames, self)
         self.zoom_widget.setFixedWidth(self.markers_container.width())
         self.zoom_widget.emojiClicked.connect(self.setValue)
         self.zoom_widget.closeRequested.connect(self.hide_zoomed_markers)
+        self.zoom_widget.selected_frame = center_frame  # <- pour la surbrillance
 
         pos = self.markers_container.mapToGlobal(self.markers_container.rect().bottomLeft())
-        print(f"[TimelineWidget] Moving zoom widget to {pos}")
         self.zoom_widget.move(pos)
         self.zoom_widget.show()
         self.zoom_widget.raise_()
+
 
 
 
@@ -238,7 +262,6 @@ class TimelineWidget(QWidget):
             marker.show()
             self.action_markers.append(marker)
 
-        print(f"[TimelineWidget] Updated {len(self.action_markers)} action markers")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -249,7 +272,10 @@ class TimelineWidget(QWidget):
         self.update_markers()
 
     def handle_marker_click(self, frame):
-        self.show_zoomed_markers(frame, window=10*60*FPS)
+        self.selected_frame = frame
+        self.show_zoomed_markers(frame, max_actions=10)
+        self.update_markers()  # pour redraw la barre principale avec la surbrillance
+
 
     def value(self):
         return self.slider.value()
@@ -267,21 +293,24 @@ class TimelineWidget(QWidget):
 class ZoomedMarkersWidget(QFrame):
     emojiClicked = pyqtSignal(int)
     closeRequested = pyqtSignal()  # nouveau signal pour fermeture
-    def __init__(self, actions, center_frame, window, n_frames, parent=None):
+    
+    def __init__(self, actions, center_frame, n_frames, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setMouseTracking(True)
         self.setFixedHeight(48)
         self.setMinimumWidth(220)
         self.setStyleSheet("background: rgba(40,40,40, 0.98); border: 2px solid #2196F3; border-radius: 8px;")
-        self.set_actions(actions, center_frame, window)
+        self.set_actions(actions, center_frame)
         self.installEventFilter(self)
-        self.emoji_hitboxes = []  # [(x_min, x_max, frame), ...]
+        self.emoji_hitboxes = []
+        self.selected_frame = center_frame
+        self.n_frames = n_frames
 
-    def set_actions(self, actions, center_frame, window):
+    def set_actions(self, actions, center_frame):
         self.actions = actions
         self.center_frame = center_frame
-        self.window = window
+        self.selected_frame = center_frame
         self.update()
 
     def eventFilter(self, obj, event):
@@ -291,7 +320,6 @@ class ZoomedMarkersWidget(QFrame):
 
 
     def paintEvent(self, event):
-        print("[ZoomedMarkersWidget] paintEvent called")
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         width = self.width()
@@ -313,12 +341,7 @@ class ZoomedMarkersWidget(QFrame):
         )
         self.cross_rect = cross_rect
 
-        n = self.n_frames = self.parent().n_frames
-        window = self.window
-        center = self.center_frame
-        left = max(0, center - window//2)
-        right = min(n-1, center + window//2)
-        visible_actions = [a for a in self.actions if left <= a['frame'] <= right]
+        visible_actions = self.actions
         N = len(visible_actions)
         self.emoji_hitboxes = []
         for i, a in enumerate(visible_actions):
@@ -328,6 +351,13 @@ class ZoomedMarkersWidget(QFrame):
             team = a.get('team', '')
             font = QFont("Apple Color Emoji" if sys.platform == "darwin" else "Segoe UI Emoji", 24)
             painter.setFont(font)
+            # --- Surbrillance ---
+            selected = (a['frame'] == self.selected_frame)
+            if selected:
+                painter.setBrush(QColor(33, 150, 243, 50))
+                painter.setPen(QPen(QColor(33, 150, 243), 2))
+                painter.drawRect(x_pos-18, 10, 36, 36)  # carré bleu, même taille que l'emoji
+
             painter.setPen(QColor(255,255,255,255))
             painter.drawText(x_pos-12, 30, emoji)
             mouse = self.mapFromGlobal(QCursor.pos())

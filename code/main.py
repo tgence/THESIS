@@ -423,7 +423,7 @@ class MainWindow(QWidget):
         # Info
         match_time = format_match_time(frame_number, n_frames_firstHalf, 
                                       n_frames_secondHalf, 0, 0, fps=FPS)
-        self.info_label.setText(f"{halftime} {match_time}  \nFrame {get_frame_data(frame_number)[1]}")
+        self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
 
     def _draw_players(self, half, idx):
         """Dessine tous les joueurs"""
