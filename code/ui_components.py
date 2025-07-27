@@ -2,7 +2,8 @@
 
 from PyQt5.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel, 
-    QDialog, QListWidget, QListWidgetItem, QCheckBox
+    QDialog, QListWidget, QListWidgetItem, QCheckBox,
+    QComboBox, QScrollArea, QFrame, QMessageBox, QWidget
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont
@@ -15,51 +16,255 @@ class ActionFilterBar:
         self.update_callback = update_callback
         self.action_buttons = {}
         self.layout = QHBoxLayout()
+        self.available_types = {}
+        self.selected_action_types = []  # Aucun sélectionné par défaut
+        self.active_button_states = {}  # Mémorise l'état des boutons
         
-        self._create_buttons()
+        self._analyze_actions()
+        self._create_ui()
         
-    def _create_buttons(self):
-        self.layout.addWidget(QLabel("Actions:"))
-        
-        # Grouper par type
-        action_types = {}
+    def _analyze_actions(self):
+        """Analyse toutes les actions disponibles"""
         for act in self.actions_data:
             label = act['label']
-            if label not in action_types:
-                action_types[label] = []
-            action_types[label].append(act)
+            if label not in self.available_types:
+                self.available_types[label] = {
+                    'emoji': act['emoji'],
+                    'count': 0
+                }
+            self.available_types[label]['count'] += 1
+    
+    def _create_ui(self):
+        self.layout.addWidget(QLabel("Actions:"))
         
-        # Créer boutons
-        for action_type, actions in action_types.items():
-            emoji = actions[0]['emoji']
-            btn = QPushButton(f"{emoji} {action_type} ({len(actions)})")
-            btn.setCheckable(True)
-            btn.setChecked(True)
-            btn.clicked.connect(self.update_callback)
-            self.action_buttons[action_type] = btn
-            self.layout.addWidget(btn)
+        # Bouton de sélection des types d'actions
+        self.select_button = QPushButton("Select Action Types")
+        self.select_button.clicked.connect(self.open_selection_dialog)
+        self.layout.addWidget(self.select_button)
+        
+        # Séparateur
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        self.layout.addWidget(separator)
+        
+        # Placeholder pour les boutons d'actions (insérer ici plus tard)
+        self.buttons_start_index = self.layout.count()
         
         self.layout.addStretch()
         
-        # Toggle all
-        toggle_all = QPushButton("All")
-        toggle_all.clicked.connect(self.toggle_all)
-        self.layout.addWidget(toggle_all)
+        # Bouton "All" - toujours présent mais désactivé par défaut
+        self.all_button = QPushButton("All")
+        self.all_button.setCheckable(True)
+        self.all_button.setChecked(False)
+        self.all_button.setEnabled(False)  # Désactivé tant qu'aucune action n'est sélectionnée
+        self.all_button.clicked.connect(self.toggle_all)
+        self.layout.addWidget(self.all_button)
+    
+    def open_selection_dialog(self):
+        dialog = ActionSelectionDialog(self.select_button.parent(), self.available_types)
+        
+        # Pré-sélectionner les types actuels
+        dialog.set_selected_types(self.selected_action_types)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            new_selection = dialog.get_selected_types()
+            
+            # Sauvegarder l'état actuel des boutons actifs avant de les supprimer
+            current_active_states = {}
+            for action_type, btn in self.action_buttons.items():
+                current_active_states[action_type] = btn.isChecked()
+            
+            # Mettre à jour la liste des types sélectionnés
+            self.selected_action_types = new_selection
+            
+            # Mettre à jour les états mémorisés
+            for action_type in new_selection:
+                if action_type not in self.active_button_states:
+                    # Nouveau type : désactivé par défaut
+                    self.active_button_states[action_type] = False
+                elif action_type in current_active_states:
+                    # Type existant : garder son état actuel
+                    self.active_button_states[action_type] = current_active_states[action_type]
+            
+            # Supprimer les états des types qui ne sont plus sélectionnés
+            self.active_button_states = {
+                k: v for k, v in self.active_button_states.items() 
+                if k in new_selection
+            }
+            
+            self._update_filter_buttons()
+            
+            # Activer le bouton "All" si des actions sont sélectionnées
+            self.all_button.setEnabled(len(self.selected_action_types) > 0)
+            
+            self.update_callback()
+    
+    def _update_filter_buttons(self):
+        """Met à jour les boutons de filtre selon la sélection"""
+        # Supprimer les anciens boutons
+        for btn in self.action_buttons.values():
+            btn.deleteLater()
+        self.action_buttons.clear()
+        
+        # Créer les nouveaux boutons pour les types sélectionnés
+        for i, action_type in enumerate(self.selected_action_types):
+            if action_type in self.available_types:
+                emoji = self.available_types[action_type]['emoji']
+                count = self.available_types[action_type]['count']
+                btn = QPushButton(f"{emoji} {action_type} ({count})")
+                btn.setCheckable(True)
+                
+                # Utiliser l'état mémorisé (désactivé par défaut pour les nouveaux)
+                is_checked = self.active_button_states.get(action_type, False)
+                btn.setChecked(is_checked)
+                
+                btn.clicked.connect(self._on_action_button_clicked)
+                self.action_buttons[action_type] = btn
+                
+                # Insérer depuis la gauche (après le séparateur)
+                insert_position = self.buttons_start_index + i
+                self.layout.insertWidget(insert_position, btn)
+    
+    def _on_action_button_clicked(self):
+        """Gestionnaire pour les clics sur les boutons d'action"""
+        # Mettre à jour les états mémorisés
+        for action_type, btn in self.action_buttons.items():
+            self.active_button_states[action_type] = btn.isChecked()
+        
+        # Mettre à jour le bouton "All" selon l'état des boutons individuels
+        if self.action_buttons:  # S'assurer qu'il y a des boutons
+            all_checked = all(btn.isChecked() for btn in self.action_buttons.values())
+            self.all_button.setChecked(all_checked)
+        
+        self.update_callback()
     
     def toggle_all(self):
-        all_checked = all(btn.isChecked() for btn in self.action_buttons.values())
-        for btn in self.action_buttons.values():
-            btn.setChecked(not all_checked)
+        """Active/désactive tous les boutons d'action"""
+        if not self.selected_action_types:
+            # Si aucune action n'est sélectionnée, désactiver le bouton "All"
+            self.all_button.setChecked(False)
+            return
+        
+        is_all_checked = self.all_button.isChecked()
+        
+        for action_type, btn in self.action_buttons.items():
+            btn.setChecked(is_all_checked)
+            self.active_button_states[action_type] = is_all_checked
+        
         self.update_callback()
     
     def get_active_types(self):
+        """Retourne les types d'actions actuellement actifs"""
         return [t for t, btn in self.action_buttons.items() if btn.isChecked()]
     
     def get_filtered_actions(self):
+        """Retourne les actions filtrées"""
         active_types = self.get_active_types()
         return [a for a in self.actions_data if a['label'] in active_types]
 
+class ActionSelectionDialog(QDialog):
+    """Dialog pour sélectionner les types d'actions à afficher"""
+    
+    def __init__(self, parent, all_action_types):
+        super().__init__(parent)
+        self.all_action_types = all_action_types
+        self.selected_types = []
+        self.MAX_SELECTIONS = 6
+        
+        self.setWindowTitle("Select Action Types")
+        self.setMinimumWidth(300)
+        self.setMinimumHeight(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Instructions
+        info_label = QLabel(f"Select up to {self.MAX_SELECTIONS} action types to display:")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        
+        # Zone de sélection avec scroll
+        scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        
+        self.checkboxes = {}
+        for action_type, data in all_action_types.items():
+            cb = QCheckBox(f"{data['emoji']} {action_type} ({data['count']})")
+            cb.stateChanged.connect(self.on_checkbox_changed)
+            self.checkboxes[action_type] = cb
+            scroll_layout.addWidget(cb)
+        
+        scroll_area.setWidget(scroll_widget)
+        layout.addWidget(scroll_area)
+        
+        # Compteur
+        self.counter_label = QLabel("0/6 selected")
+        layout.addWidget(self.counter_label)
+        
+        # Boutons
+        button_layout = QHBoxLayout()
+        
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all)
+        button_layout.addWidget(select_all_btn)
+        
+        clear_btn = QPushButton("Clear All")
+        clear_btn.clicked.connect(self.clear_all)
+        button_layout.addWidget(clear_btn)
+        
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        button_layout.addWidget(ok_btn)
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def on_checkbox_changed(self):
+        selected_count = sum(1 for cb in self.checkboxes.values() if cb.isChecked())
+        self.counter_label.setText(f"{selected_count}/{self.MAX_SELECTIONS} selected")
+        
+        if selected_count > self.MAX_SELECTIONS:
+            # Trouver le dernier coché et le décocher
+            sender = self.sender()
+            if sender and sender.isChecked():
+                sender.setChecked(False)
+                QMessageBox.warning(self, "Limit Reached", 
+                                  f"You can only select up to {self.MAX_SELECTIONS} action types.")
+                return
+        
+        # Désactiver les autres checkboxes si limite atteinte
+        for cb in self.checkboxes.values():
+            if not cb.isChecked():
+                cb.setEnabled(selected_count < self.MAX_SELECTIONS)
+    
+    def select_all(self):
+        count = 0
+        for cb in self.checkboxes.values():
+            if count < self.MAX_SELECTIONS:
+                cb.setChecked(True)
+                count += 1
+            else:
+                cb.setChecked(False)
+    
+    def clear_all(self):
+        for cb in self.checkboxes.values():
+            cb.setChecked(False)
+            cb.setEnabled(True)
+    
+    def get_selected_types(self):
+        return [action_type for action_type, cb in self.checkboxes.items() if cb.isChecked()]
+    
+    def set_selected_types(self, types):
+        """Pré-sélectionne les types donnés"""
+        for action_type, cb in self.checkboxes.items():
+            cb.setChecked(action_type in types)
+        self.on_checkbox_changed()
 
+# Conserver les autres classes inchangées
 class MatchActionsDialog(QDialog):
     """Dialog amélioré pour afficher les actions du match"""
     
@@ -100,7 +305,6 @@ class MatchActionsDialog(QDialog):
         frame = item.data(Qt.UserRole)
         activate_timeline = self.auto_timeline.isChecked()
         self.goto_callback(frame, activate_timeline)
-
 
 def create_nav_button(label, width, height, frames, tooltip, callback):
     """Crée un bouton de navigation standardisé"""

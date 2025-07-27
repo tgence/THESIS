@@ -47,7 +47,6 @@ class TimelineSlider(QSlider):
             self.parent()._update_time_label_on_value(self.value())
         self.update()
 
-
     def paintEvent(self, event):
         super().paintEvent(event)
         if self.hover_pos is not None:
@@ -87,17 +86,10 @@ class ActionMarker(QWidget):
             painter.setPen(QColor(0, 0, 0, 50))
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(self.rect(), Qt.AlignCenter, self.action['emoji'])
-
-
-
         
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self.action['frame'])
-
-
-
-
 
 
 class TimelineWidget(QWidget):
@@ -113,7 +105,7 @@ class TimelineWidget(QWidget):
         self.filtered_actions = []
         self.zoom_widget = None
         self.selected_frame = None
-
+        self.has_selected_types = False  # NOUVEAU: flag pour savoir si des types ont été sélectionnés
 
         self._setup_ui()
 
@@ -174,11 +166,6 @@ class TimelineWidget(QWidget):
 
         self.setMouseTracking(True)
 
-
-
-
-
-
     def _update_time_label_on_value(self, frame):
         time_str = format_match_time(
             frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS
@@ -189,7 +176,6 @@ class TimelineWidget(QWidget):
         self.time_label.setText(time_str)
 
     def show_zoomed_markers(self, center_frame, max_actions=10):
-
         # Trie par ordre d'apparition (frame)
         all_actions = sorted(self.filtered_actions, key=lambda a: a['frame'])
         idx = next((i for i, a in enumerate(all_actions) if a['frame'] == center_frame), None)
@@ -220,10 +206,6 @@ class TimelineWidget(QWidget):
         self.zoom_widget.show()
         self.zoom_widget.raise_()
 
-
-
-
-
     def hide_zoomed_markers(self):
         if self.zoom_widget:
             self.zoom_widget.hide()
@@ -236,14 +218,21 @@ class TimelineWidget(QWidget):
 
     def set_filtered_types(self, action_types):
         self.filtered_types = action_types
+        # NOUVEAU: Mettre à jour le flag pour savoir si des types ont été sélectionnés
+        self.has_selected_types = len(action_types) > 0
         self.update_markers()
 
     def update_markers(self):
-        # MAJ de la liste filtrée utilisée partout
-        self.filtered_actions = [
-            a for a in self.actions_data
-            if not self.filtered_types or a['label'] in self.filtered_types
-        ]
+        # MODIFIÉ: Ne filtrer les actions que si des types ont été explicitement sélectionnés
+        if self.has_selected_types:
+            # Si des types sont sélectionnés, filtrer selon ces types
+            self.filtered_actions = [
+                a for a in self.actions_data
+                if a['label'] in self.filtered_types
+            ]
+        else:
+            # Si aucun type n'est sélectionné, ne rien afficher
+            self.filtered_actions = []
 
         # Nettoyage
         for marker in self.action_markers:
@@ -253,15 +242,16 @@ class TimelineWidget(QWidget):
             if isinstance(child, QWidget):
                 child.deleteLater()
 
-        slider_width = max(1, self.markers_container.width())
-        for action in self.filtered_actions:
-            x_pos = round(action['frame'] * (slider_width - 1) / (self.n_frames - 1))
-            marker = ActionMarker(action, parent=self.markers_container)
-            marker.move(x_pos, 0)
-            marker.clicked.connect(self.handle_marker_click)  # <-- Remplace le lambda pour éviter late binding bugs
-            marker.show()
-            self.action_markers.append(marker)
-
+        # MODIFIÉ: Créer les marqueurs seulement s'il y a des actions filtrées
+        if self.filtered_actions:
+            slider_width = max(1, self.markers_container.width())
+            for action in self.filtered_actions:
+                x_pos = round(action['frame'] * (slider_width - 1) / (self.n_frames - 1))
+                marker = ActionMarker(action, parent=self.markers_container)
+                marker.move(x_pos, 0)
+                marker.clicked.connect(self.handle_marker_click)
+                marker.show()
+                self.action_markers.append(marker)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -276,7 +266,6 @@ class TimelineWidget(QWidget):
         self.show_zoomed_markers(frame, max_actions=10)
         self.update_markers()  # pour redraw la barre principale avec la surbrillance
 
-
     def value(self):
         return self.slider.value()
 
@@ -285,9 +274,6 @@ class TimelineWidget(QWidget):
 
     def setMaximum(self, value):
         self.slider.setMaximum(value)
-
-
-
 
 
 class ZoomedMarkersWidget(QFrame):
@@ -314,10 +300,8 @@ class ZoomedMarkersWidget(QFrame):
         self.update()
 
     def eventFilter(self, obj, event):
-    # Désactive la fermeture automatique
+        # Désactive la fermeture automatique
         return super().eventFilter(obj, event)
-
-
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -368,10 +352,9 @@ class ZoomedMarkersWidget(QFrame):
             painter.drawText(x_pos-20, 44, f"{time} {team}")
             self.emoji_hitboxes.append((x_pos-20, x_pos+20, a['frame']))
 
-
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            # Clique sur la croix ?
+            # Clique sur la croix ?
             if hasattr(self, "cross_rect") and self.cross_rect.contains(event.pos()):
                 self.closeRequested.emit()
                 return

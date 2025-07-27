@@ -236,14 +236,9 @@ class MainWindow(QWidget):
         """Crée le panneau d'outils"""
         tools_panel = QVBoxLayout()
         
-        # Match actions
-        tools_panel.addWidget(QLabel("Actions"))
-        self.match_actions_button = QPushButton("Match Actions")
-        self.match_actions_button.clicked.connect(self.show_match_actions)
-        tools_panel.addWidget(self.match_actions_button)
         
         # Simulation mode
-        tools_panel.addWidget(QLabel("─────────────"))
+        tools_panel.addWidget(QLabel("Simulation"))
         self.simulation_button = QPushButton("Simulation Mode")
         self.simulation_button.setCheckable(True)
         self.simulation_button.clicked.connect(self.toggle_simulation_mode)
@@ -357,21 +352,7 @@ class MainWindow(QWidget):
         active_types = self.action_filter.get_active_types()
         self.timeline_widget.set_filtered_types(active_types)
 
-    
-    def show_match_actions(self):
-        """Affiche le dialog des actions"""
-        dlg = MatchActionsDialog(
-            self, 
-            self.actions_data, 
-            home_team_name,
-            self._goto_action_with_timeline
-        )
-        dlg.exec_()
-    
-    def _goto_action_with_timeline(self, frame, activate_timeline):
-        """Va à une frame"""
-        self.timeline_widget.setValue(frame)
-    
+
     def toggle_simulation_mode(self):
         """Active/désactive le mode simulation"""
         self.simulation_mode = self.simulation_button.isChecked()

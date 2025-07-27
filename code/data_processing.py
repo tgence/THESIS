@@ -6,7 +6,7 @@ import numpy as np
 import ast
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
-from utils import compute_orientations
+from scipy.signal import savgol_filter
 from config import *
 
 
@@ -38,6 +38,39 @@ def get_player_color_dict(df):
         numc = safe_color(r.shirtNumberColor)
         d[pid] = (main, sec, numc)
     return d
+
+
+
+
+def compute_orientations(xy_data, player_ids, window_length=100, polyorder=2):
+    """
+    Calcule et lisse l'orientation des joueurs, frame par frame.
+    Renvoie: dict[pid][frame_idx] = angle (float, en radians)
+    """
+    orientations = {pid: [] for pid in player_ids['Home'] + player_ids['Away']}
+    for half in ["firstHalf", "secondHalf"]:
+        for team in ["Home", "Away"]:
+            xy = xy_data[half][team].xy  # shape (frames, n_players*2)
+            n_frames = xy.shape[0]
+            ids = player_ids[team]
+            for j, pid in enumerate(ids):
+                traj = xy[:, 2*j:2*j+2]
+                # calcul brut frame à frame (nan-safe)
+                dx = np.diff(traj[:, 0], prepend=traj[0,0])
+                dy = np.diff(traj[:, 1], prepend=traj[0,1])
+                angles = np.arctan2(dy, dx)
+                # conversion périodique pour lissage
+                cos_a = np.cos(angles)
+                sin_a = np.sin(angles)
+                # si trop court, skip smoothing
+                if len(cos_a) < window_length:
+                    angles_smooth = angles
+                else:
+                    cos_a = savgol_filter(cos_a, window_length, polyorder, mode='nearest')
+                    sin_a = savgol_filter(sin_a, window_length, polyorder, mode='nearest')
+                    angles_smooth = np.arctan2(sin_a, cos_a)
+                orientations[pid] += list(angles_smooth)
+    return orientations
 
 
 def extract_dsam_from_xml(file_pos, player_ids, teamid_map, n_frames_per_half):
@@ -168,9 +201,12 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                     "Penalty_Play_Pass": {"label": "Penalty", "emoji": "⚪"},
                     "Penalty_ShotAtGoal_BlockedShot": {"label": "Penalty", "emoji": "⚪"},
                     "Penalty_ShotAtGoal_SuccessfulShot": {"label": "Penalty", "emoji": "⚪"},
+                    # Nouvelles actions
+                    "Offside": {"label": "Offside", "emoji": "🚩"},
+                    "OutSubstitution": {"label": "Substitution", "emoji": "🔄"},
                 }
-                
-                if eid_str in action_map:
+                # je veux verif s il y a pas deja la meme action au meme temps etc il faut faire une comparaison complete
+                if eid_str in action_map and not any(str(a['eID']) == eid_str and a['frame'] == frame for a in ACTIONS):
                     action = action_map[eid_str].copy()
                     action.update({
                         "frame": frame,
