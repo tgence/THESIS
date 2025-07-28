@@ -1,8 +1,8 @@
 # custom_slider.py
 
-from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame
+from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
 from PyQt5.QtCore import Qt, QEvent, pyqtSignal, QRect, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QCursor
+from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QCursor, QBrush
 from visualization import format_match_time
 from config import *
 import sys
@@ -16,6 +16,8 @@ class TimelineSlider(QSlider):
         self.n_frames_secondHalf = n_frames_secondHalf
         self.setMouseTracking(True)
         self.hover_pos = None
+        self.hover_time_str = ""
+        self.hover_frame = None  # NOUVEAU
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.width() > 0:
@@ -35,6 +37,8 @@ class TimelineSlider(QSlider):
                 self.setValue(frame)
             time_str = format_match_time(frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS)
             self.hover_pos = event.x()
+            self.hover_time_str = time_str
+            self.hover_frame = frame  # NOUVEAU
             self.hoverFrameChanged.emit(frame, time_str)
             self.update()
 
@@ -42,19 +46,65 @@ class TimelineSlider(QSlider):
         super().leaveEvent(event)
         QToolTip.hideText()
         self.hover_pos = None
-        # ==> Remet le label au temps réel (handle) quand la souris quitte la barre
-        if self.parent() and hasattr(self.parent(), '_update_time_label_on_value'):
-            self.parent()._update_time_label_on_value(self.value())
+        self.hover_time_str = ""
+        self.hover_frame = None  # NOUVEAU
         self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if self.hover_pos is not None:
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
-            pen = QPen(QColor(150, 150, 150, 100), 1)
-            painter.setPen(pen)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        if self.hover_pos is not None and self.hover_frame is not None:
+            current_value = self.value()
+            
+            # === BARRE ENTRE CURSEURS (fonctionne) ===
+            real_pos = (current_value / self.maximum()) * self.width() if self.maximum() > 0 else 0
+            hover_pos = self.hover_pos
+            
+            if abs(hover_pos - real_pos) > 2:
+                start_x = min(real_pos, hover_pos)
+                end_x = max(real_pos, hover_pos)
+                y_center = self.height() // 2
+                bar_y = y_center - TIMELINE_GROOVE_HEIGHT // 2
+                
+                preview_brush = QBrush(QColor(33, 150, 243, 60))
+                painter.setBrush(preview_brush)
+                painter.setPen(QPen(Qt.NoPen))
+                painter.drawRect(int(start_x), bar_y, int(end_x - start_x), TIMELINE_GROOVE_HEIGHT)
+            
+            # === LIGNE DU CURSEUR IMAGINAIRE ===
+            preview_pen = QPen(QColor(33, 150, 243, 120), 1)
+            painter.setPen(preview_pen)
             painter.drawLine(self.hover_pos, 0, self.hover_pos, self.height())
+            
+            # === TOOLTIP À LA MÊME HAUTEUR QUE LE TEMPS EN BAS À GAUCHE ===
+            current_hover_time = format_match_time(self.hover_frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS)
+            
+            font = QFont("Arial", 11)  # Même taille que le temps en bas à gauche
+            painter.setFont(font)
+            fm = painter.fontMetrics()
+            text_width = fm.width(current_hover_time)
+            text_height = fm.height()
+            
+            # Position à côté du curseur, même hauteur que le temps réel
+            tooltip_x = self.hover_pos + 10  # 10px à droite du curseur
+            tooltip_y = 15  # Même hauteur que le test rouge qui marche
+            
+            # S'assurer qu'on reste dans les limites
+            if tooltip_x + text_width > self.width() - 5:
+                tooltip_x = self.hover_pos - text_width - 10  # À gauche du curseur
+            
+            # Fond du tooltip
+            padding = 3
+            painter.setBrush(QBrush(QColor(30, 30, 30, 200)))
+            painter.setPen(QPen(QColor(33, 150, 243), 1))
+            painter.drawRoundedRect(tooltip_x - padding, tooltip_y - text_height - padding + 3, 
+                                text_width + 2*padding, text_height + 2*padding, 3, 3)
+            
+            # Texte du tooltip
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(tooltip_x, tooltip_y, current_hover_time)
 
 class ActionMarker(QWidget):
     clicked = pyqtSignal(int)
@@ -134,6 +184,30 @@ class TimelineWidget(QWidget):
         self.slider.setFixedHeight(TIMELINE_SLIDER_HEIGHT)
         self.slider.valueChanged.connect(self.frameChanged.emit)
         layout.addWidget(self.slider)
+        
+        # === Container pour le temps en bas à gauche (PLUS GRAND) ===
+        time_container = QWidget()
+        time_container.setFixedHeight(30)
+        time_layout = QHBoxLayout(time_container)
+        time_layout.setContentsMargins(0, 8, 0, 0)  # Plus d'espace vers le bas
+        
+        self.time_label = QLabel("00:00")
+        self.time_label.setAlignment(Qt.AlignLeft)
+        self.time_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                font-size: 13px;                 /* PLUS GRAND */
+                font-family: Arial;
+                font-weight: 500;               /* Légèrement plus gras */
+                background: transparent;
+                padding: 3px 6px;
+            }
+        """)
+        
+        time_layout.addWidget(self.time_label)
+        time_layout.addStretch()
+        layout.addWidget(time_container)
+
         self.slider.setStyleSheet(f"""
             QSlider::groove:horizontal {{
                 height: {TIMELINE_GROOVE_HEIGHT}px;
@@ -158,22 +232,18 @@ class TimelineWidget(QWidget):
             }}
         """)
 
-        self.time_label = QLabel("")
-        self.time_label.setAlignment(Qt.AlignLeft)
-        layout.addWidget(self.time_label)
         self.slider.valueChanged.connect(self._update_time_label_on_value)
-        self.slider.hoverFrameChanged.connect(self._update_time_label)
 
         self.setMouseTracking(True)
 
+
     def _update_time_label_on_value(self, frame):
+        """Met à jour SEULEMENT le temps du curseur réel (en bas à gauche)"""
         time_str = format_match_time(
             frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS
         )
         self.time_label.setText(time_str)
 
-    def _update_time_label(self, frame, time_str):
-        self.time_label.setText(time_str)
 
     def show_zoomed_markers(self, center_frame, max_actions=10):
         # Trie par ordre d'apparition (frame)
@@ -282,7 +352,7 @@ class ZoomedMarkersWidget(QFrame):
     
     def __init__(self, actions, center_frame, n_frames, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
         self.setMouseTracking(True)
         self.setFixedHeight(48)
         self.setMinimumWidth(220)
@@ -300,13 +370,18 @@ class ZoomedMarkersWidget(QFrame):
         self.update()
 
     def eventFilter(self, obj, event):
-        # Désactive la fermeture automatique
+        # Gérer la perte de focus pour fermer automatiquement
+        if event.type() == QEvent.WindowDeactivate:
+            # Optionnel: fermer automatiquement quand on perd le focus
+            # self.closeRequested.emit()
+            pass
         return super().eventFilter(obj, event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         width = self.width()
+        
         # --- Dessin du bouton croix ---
         cross_size = 18
         margin = 7
@@ -335,12 +410,13 @@ class ZoomedMarkersWidget(QFrame):
             team = a.get('team', '')
             font = QFont("Apple Color Emoji" if sys.platform == "darwin" else "Segoe UI Emoji", 24)
             painter.setFont(font)
+            
             # --- Surbrillance ---
             selected = (a['frame'] == self.selected_frame)
             if selected:
                 painter.setBrush(QColor(33, 150, 243, 50))
                 painter.setPen(QPen(QColor(33, 150, 243), 2))
-                painter.drawRect(x_pos-18, 10, 36, 36)  # carré bleu, même taille que l'emoji
+                painter.drawRect(x_pos-18, 10, 36, 36)
 
             painter.setPen(QColor(255,255,255,255))
             painter.drawText(x_pos-12, 30, emoji)
@@ -363,3 +439,13 @@ class ZoomedMarkersWidget(QFrame):
                 if x_min <= x <= x_max:
                     self.emojiClicked.emit(frame)
         super().mousePressEvent(event)
+
+    def showEvent(self, event):
+        """S'assurer que la fenêtre reste dans les limites de l'écran"""
+        super().showEvent(event)
+        # Optionnel: ajuster la position si elle sort de l'écran
+        screen = QApplication.desktop().screenGeometry()
+        if self.x() + self.width() > screen.width():
+            self.move(screen.width() - self.width() - 10, self.y())
+        if self.y() + self.height() > screen.height():
+            self.move(self.x(), screen.height() - self.height() - 10)
