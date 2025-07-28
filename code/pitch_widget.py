@@ -231,7 +231,7 @@ class PitchWidget(QWidget):
         ball = self.scene.addEllipse(
             x - BALL_RADIUS, y - BALL_RADIUS,
             BALL_RADIUS * 2, BALL_RADIUS * 2,
-            QPen(Qt.darkYellow, 0.3), QBrush(QColor("orange"))
+            QPen(Qt.darkYellow, 0.3), QBrush(QColor(BALL_COLOR))
         )
         ball.setZValue(100)
         # self.scene.addItem(ball)  # ← À VIRER absolument

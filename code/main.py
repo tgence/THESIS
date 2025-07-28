@@ -131,7 +131,10 @@ class MainWindow(QWidget):
         self.is_playing = False
         self.frame_step = 1
         self.current_tool = "select"
-        
+        self.simulation_start_frame = 0
+        self.simulation_end_frame = 0
+        self.simulation_loop_active = False
+
         # Actions
         self.actions_data = extract_match_actions_from_events(events, FPS, n_frames_firstHalf)
         
@@ -185,16 +188,12 @@ class MainWindow(QWidget):
         nav_layout.addWidget(create_nav_button("5s >", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, 5 * FPS, "Forward 5 seconds", self.jump_frames))
         nav_layout.addWidget(create_nav_button("1m >", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, 60 * FPS, "Forward 1 minute", self.jump_frames))
 
-        
-
-        
         control_layout.addLayout(nav_layout)
-        
 
-       
-        # Speed control
+        # Speed control - PLUS GRANDE
         self.speed_box = QComboBox()
-        for label, _ in [("x0.25", 160), ("x0.5", 80), ("x1", 40), ("x2", 20), ("x4", 10), ("x16", 2), ("x64", 1)]:
+        self.speed_box.setMinimumWidth(80)  # AJOUTÉ: Plus large pour bien afficher le texte
+        for label, _ in [("x0.25", 160), ("x0.5", 80), ("x1", 40), ("x2", 20), ("x4", 10), ("x16", 5)]:
             self.speed_box.addItem(label)
         
         self.speed_box.setCurrentIndex(2)
@@ -231,11 +230,11 @@ class MainWindow(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(40)
         self.timer.timeout.connect(self.next_frame)
+
     
     def _create_tools_panel(self):
         """Crée le panneau d'outils"""
         tools_panel = QVBoxLayout()
-        
         
         # Simulation mode
         tools_panel.addWidget(QLabel("Simulation"))
@@ -245,18 +244,29 @@ class MainWindow(QWidget):
         tools_panel.addWidget(self.simulation_button)
         
         self.sim_interval_spin = QDoubleSpinBox()
-        self.sim_interval_spin.setRange(1.0, 10.0)
-        self.sim_interval_spin.setValue(3.0)
+        self.sim_interval_spin.setRange(1.0, 30.0)
+        self.sim_interval_spin.setValue(10.0)
         self.sim_interval_spin.setSuffix(" sec")
         self.sim_interval_spin.setSingleStep(0.5)
         self.sim_interval_spin.valueChanged.connect(self.update_simulation_interval)
         tools_panel.addWidget(QLabel("Future interval:"))
         tools_panel.addWidget(self.sim_interval_spin)
         
+        # NOUVEAU: Affichage des temps de loop
+        self.loop_times_label = QLabel("")
+        self.loop_times_label.setWordWrap(True)
+        self.loop_times_label.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
+        tools_panel.addWidget(self.loop_times_label)
+        
         self.show_trajectories_checkbox = QCheckBox("Show trajectories")
         self.show_trajectories_checkbox.setChecked(True)
         self.show_trajectories_checkbox.stateChanged.connect(lambda: self.update_scene(self.timeline_widget.value()))
         tools_panel.addWidget(self.show_trajectories_checkbox)
+
+        self.simulation_info = QLabel("Click Play to loop the selected interval")
+        self.simulation_info.setWordWrap(True)
+        self.simulation_info.setStyleSheet("color: #888; font-size: 10px;")
+        tools_panel.addWidget(self.simulation_info)
         
         # Annotation tools
         tools_panel.addWidget(QLabel("─────────────"))
@@ -331,7 +341,7 @@ class MainWindow(QWidget):
 
     def _setup_managers(self):
         """Initialise les managers"""
-        self.trajectory_manager = TrajectoryManager(self.pitch_widget)
+        self.trajectory_manager = TrajectoryManager(self.pitch_widget, home_colors, away_colors)
         self.annotation_manager = ArrowAnnotationManager(self.pitch_widget.scene)
         self.set_tool_mode("select")
     
@@ -354,13 +364,83 @@ class MainWindow(QWidget):
 
 
     def toggle_simulation_mode(self):
-        """Active/désactive le mode simulation"""
+        """Active/désactive le mode simulation avec système de loop"""
         self.simulation_mode = self.simulation_button.isChecked()
         if self.simulation_mode:
             self._pause_match()
-            # Calculer trajectoires futures
+            # Définir les limites de la loop
+            current_frame = self.timeline_widget.value()
+            interval_frames = int(self.sim_interval_spin.value() * FPS)
+            
+            self.simulation_start_frame = current_frame
+            self.simulation_end_frame = min(current_frame + interval_frames, n_frames - 1)
+            self.simulation_loop_active = False
+            
+            # NOUVEAU: Afficher les temps de début et fin
+            self._update_loop_times_display()
+            
+            # Changer le texte du bouton play pour "Play Loop"
+            self.play_button.setText("▶ Loop")
+        else:
+            self.trajectory_manager.clear_trails()
+            self.simulation_loop_active = False
+            self.play_button.setText("")  # Retour au texte normal
+            self.loop_times_label.setText("")  # Effacer l'affichage des temps
+            
+        self.update_scene(self.timeline_widget.value())
+    
+
+    def _update_loop_times_display(self):
+        """Met à jour l'affichage des temps de début/fin de loop"""
+        start_time = format_match_time(self.simulation_start_frame, n_frames_firstHalf, n_frames_secondHalf, 0, 0, fps=FPS)
+        end_time = format_match_time(self.simulation_end_frame, n_frames_firstHalf, n_frames_secondHalf, 0, 0, fps=FPS)
+        self.loop_times_label.setText(f"Loop: {start_time} → {end_time}")
+
+
+    def update_simulation_interval(self, value):
+        """Met à jour l'intervalle de simulation et recalcule les limites"""
+        if self.simulation_mode:
+            # Recalculer les limites de la loop
+            current_frame = self.simulation_start_frame  # Garder le même point de départ
+            interval_frames = int(value * FPS)
+            self.simulation_end_frame = min(current_frame + interval_frames, n_frames - 1)
+            
+            # NOUVEAU: Mettre à jour l'affichage des temps
+            self._update_loop_times_display()
+            
+            # Si on est en train de jouer, ne pas redémarrer
+            if not self.is_playing:
+                self.update_scene(self.timeline_widget.value())
+    
+
+
+
+
+
+
+    def update_scene(self, frame_number):
+        """Met à jour la scène"""
+        # Si en simulation mode et qu'on a cliqué à un nouvel endroit, redéfinir la loop
+        if (self.simulation_mode and 
+            not self.is_playing and 
+            abs(frame_number - self.simulation_start_frame) > 5):
+            
+            interval_frames = int(self.sim_interval_spin.value() * FPS)
+            self.simulation_start_frame = frame_number
+            self.simulation_end_frame = min(frame_number + interval_frames, n_frames - 1)
+            self.simulation_loop_active = False
+            self._update_loop_times_display()
+        
+        self.pitch_widget.clear_dynamic()
+        self.pitch_widget.draw_pitch()
+        
+        half, idx, halftime = self.frame_manager.get_frame_data(frame_number)
+        
+        # Mode simulation : trajectoires futures avec effacement progressif
+        if self.simulation_mode and self.show_trajectories_checkbox.isChecked():
+            # Recalculer les trajectoires pour la nouvelle frame
             self.trajectory_manager.calculate_future_trajectories(
-                self.timeline_widget.value(),
+                self.simulation_start_frame,  # IMPORTANT: Toujours calculer depuis le début de la loop
                 self.sim_interval_spin.value(),
                 xy_objects,
                 home_ids,
@@ -368,25 +448,12 @@ class MainWindow(QWidget):
                 n_frames,
                 self.frame_manager.get_frame_data
             )
-        else:
-            self.trajectory_manager.clear_trails()
-        self.update_scene(self.timeline_widget.value())
-    
-    def update_simulation_interval(self, value):
-        """Met à jour l'intervalle de simulation"""
-        if self.simulation_mode:
-            self.toggle_simulation_mode()
-    
-    def update_scene(self, frame_number):
-        """Met à jour la scène"""
-        self.pitch_widget.clear_dynamic()
-        self.pitch_widget.draw_pitch()
-        
-        half, idx, halftime = self.frame_manager.get_frame_data(frame_number)
-        
-        # Mode simulation : trajectoires futures
-        if self.simulation_mode and self.show_trajectories_checkbox.isChecked():
-            self.trajectory_manager.draw_future_trajectories()
+            # Passer frame_number pour l'effacement progressif
+            self.trajectory_manager.draw_future_trajectories(
+                current_frame=frame_number,
+                loop_start=self.simulation_start_frame,
+                loop_end=self.simulation_end_frame
+            )
         
         # Dessiner les joueurs
         self._draw_players(half, idx)
@@ -398,13 +465,21 @@ class MainWindow(QWidget):
         # Offside
         possession_team = PossessionTracker.get_possession_for_frame(possession, half, idx)
         offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, 
-                                       home_ids, away_ids, teams_df, last_positions)
+                                    home_ids, away_ids, teams_df, last_positions)
         self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_checkbox.isChecked())
         
         # Info
         match_time = format_match_time(frame_number, n_frames_firstHalf, 
-                                      n_frames_secondHalf, 0, 0, fps=FPS)
+                                    n_frames_secondHalf, 0, 0, fps=FPS)
         self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
+
+
+
+
+
+
+
+
 
     def _draw_players(self, half, idx):
         """Dessine tous les joueurs"""
@@ -429,34 +504,87 @@ class MainWindow(QWidget):
                 except IndexError:
                     continue
     
-    # Méthodes pour les contrôles
     def jump_frames(self, n):
+        """Navigation avec gestion simulation"""
+        if self.simulation_mode and self.is_playing:
+            # En mode simulation pendant la lecture, ne pas autoriser les sauts
+            return
+            
         new_frame = np.clip(self.timeline_widget.value() + n, 0, n_frames-1)
         self.timeline_widget.setValue(new_frame)
-    
+        
+        # NOUVEAU: Si on change de position en mode simulation, redéfinir la loop
+        if self.simulation_mode:
+            interval_frames = int(self.sim_interval_spin.value() * FPS)
+            self.simulation_start_frame = new_frame
+            self.simulation_end_frame = min(new_frame + interval_frames, n_frames - 1)
+            self.simulation_loop_active = False
+            # Mettre à jour l'affichage des temps
+            self._update_loop_times_display()
+
+
+
     def toggle_play_pause(self):
+        """Play/pause avec gestion spéciale pour simulation"""
+        
         if self.is_playing:
             self.play_button.setIcon(self.play_icon)
+            if self.simulation_mode:
+                self.play_button.setText("▶ Loop")
+            else:
+                self.play_button.setText("")
             self.timer.stop()
         else:
             self.play_button.setIcon(self.pause_icon)
+            if self.simulation_mode:
+                self.simulation_loop_active = True  # Activer la loop
+                self.play_button.setText("⏸ Loop")
+            else:
+                self.play_button.setText("")
             self.timer.start()
         self.is_playing = not self.is_playing
 
     def update_speed(self, idx):
-        intervals = [160, 80, 40, 20, 10, 2, 1]
+        intervals = [160, 80, 40, 20, 10, 5]
         self.timer.setInterval(intervals[idx])
     
+   
+
+
     def next_frame(self):
-        next_frame = min(self.timeline_widget.value() + self.frame_step, n_frames-1)
+        """Gestion des frames avec système de loop en simulation"""
+        current_frame = self.timeline_widget.value()
+        
+        if self.simulation_mode and self.simulation_loop_active:
+            # Mode loop : revenir au début si on atteint la fin
+            if current_frame >= self.simulation_end_frame:
+                # NOUVEAU: Passer en pause automatiquement à la fin de la loop
+                self.toggle_play_pause()
+                next_frame = self.simulation_start_frame  # Revenir au début
+            else:
+                next_frame = min(current_frame + self.frame_step, self.simulation_end_frame)
+        else:
+            # Mode normal
+            next_frame = min(current_frame + self.frame_step, n_frames - 1)
+            
+            # Si on atteint la fin en mode normal, arrêter
+            if next_frame == n_frames - 1:
+                self.toggle_play_pause()
+        
+        # CORRECTION: Il manquait cette ligne cruciale !
         self.timeline_widget.setValue(next_frame)
-        if next_frame == n_frames-1:
-            self.toggle_play_pause()
-    
+
+
+
+
+
     def _pause_match(self):
         if self.is_playing:
             self.toggle_play_pause()
     
+
+
+
     # Méthodes pour les annotations
     def set_tool_mode(self, mode):
         self.current_tool = mode
