@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize
-from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtGui import QColor, QIcon, QFont
 
 # Imports locaux
 from pitch_widget import PitchWidget
@@ -20,6 +20,7 @@ from trajectory_manager import TrajectoryManager
 from ui_components import ActionFilterBar, MatchActionsDialog, create_nav_button
 from frame_utils import FrameManager, PossessionTracker
 from custom_slider import TimelineWidget
+from score_manager import ScoreManager
 from config import *
 import qt_material
 
@@ -125,6 +126,8 @@ class MainWindow(QWidget):
         self.frame_manager = FrameManager(n_frames_firstHalf, n_frames_secondHalf, n_frames)
         self.trajectory_manager = None  # Initialisé après pitch_widget
         self.annotation_manager = None
+        # IMPORTANT: Utiliser les noms exacts des équipes depuis les données
+        self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
         
         # État
         self.simulation_mode = False
@@ -151,6 +154,20 @@ class MainWindow(QWidget):
         # Panel gauche
         left_panel = QVBoxLayout()
         
+        # === NOUVEAU: Zone de score en haut ===
+        score_layout = QHBoxLayout()
+        
+        # Score display
+        self.score_label = QLabel()
+        self.score_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        # Le style sera appliqué dynamiquement dans _update_score_display
+        self._update_score_display(0)  # Initialiser avec frame 0
+        
+        score_layout.addWidget(self.score_label)
+        score_layout.addStretch()  # Pousser le score vers la gauche
+        
+        left_panel.addLayout(score_layout)
+        
         # Pitch
         self.pitch_widget = PitchWidget(X_MIN, X_MAX, Y_MIN, Y_MAX)
         left_panel.addWidget(self.pitch_widget)
@@ -167,6 +184,86 @@ class MainWindow(QWidget):
         
         main_layout.addLayout(left_panel, stretch=8)
         main_layout.addLayout(tools_panel, stretch=2)
+    
+    def _update_score_display(self, frame):
+        """Met à jour l'affichage du score avec les couleurs des équipes et fond adaptatif"""
+        home_score, away_score = self.score_manager.get_score_at_frame(frame)
+        
+        # Récupérer les couleurs des équipes depuis les données
+        home_color = "#333333"  # Gris foncé par défaut
+        away_color = "#333333"  # Gris foncé par défaut
+        
+        # Récupérer la couleur principale de la première équipe Home
+        if home_ids and home_ids[0] in home_colors:
+            home_color = home_colors[home_ids[0]][0]  # Couleur principale
+        
+        # Récupérer la couleur principale de la première équipe Away  
+        if away_ids and away_ids[0] in away_colors:
+            away_color = away_colors[away_ids[0]][0]  # Couleur principale
+        
+        # Déterminer les couleurs de fond et score selon les couleurs des équipes
+        def is_light_color(hex_color):
+            """Détermine si une couleur est claire (proche du blanc)"""
+            if not hex_color.startswith('#'):
+                hex_color = '#' + hex_color
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16) 
+            b = int(hex_color[5:7], 16)
+            # Luminance relative (formule standard)
+            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+            return luminance > 0.7  # Seuil pour "couleur claire"
+        
+        def is_dark_color(hex_color):
+            """Détermine si une couleur est sombre (proche du noir)"""
+            if not hex_color.startswith('#'):
+                hex_color = '#' + hex_color
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16) 
+            b = int(hex_color[5:7], 16)
+            # Luminance relative
+            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+            return luminance < 0.3  # Seuil pour "couleur sombre"
+        
+        # Logique d'adaptation du fond et score
+        home_is_white = is_light_color(home_color)
+        away_is_white = is_light_color(away_color)
+        home_is_black = is_dark_color(home_color)
+        away_is_black = is_dark_color(away_color)
+        
+        if home_is_white or away_is_white:
+            # Une équipe en blanc → fond noir, score blanc
+            background_color = "#000000"
+            score_color = "#ffffff"
+        elif home_is_black or away_is_black:
+            # Une équipe en noir → fond blanc, score noir
+            background_color = "#ffffff" 
+            score_color = "#000000"
+        else:
+            # Par défaut → fond blanc, score noir
+            background_color = "#ffffff"
+            score_color = "#000000"
+        
+        # HTML avec couleurs adaptatives et noms complets
+        score_html = f"""
+        <span style="color: {home_color}; font-weight: bold;">{home_team_name}</span>
+        <span style="color: {score_color}; font-weight: bold;"> {home_score} - {away_score} </span>
+        <span style="color: {away_color}; font-weight: bold;">{away_team_name}</span>
+        """
+        
+        # Appliquer le style avec fond adaptatif - la taille s'adapte au contenu
+        self.score_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 20px;
+                font-family: Arial;
+                font-weight: bold;
+                background: {background_color};
+                padding: 6px 12px;
+                border-radius: 6px;
+                margin: 5px;
+            }}
+        """)
+        
+        self.score_label.setText(score_html)
     
     def _create_timeline_controls(self, parent_layout):
         """Crée les contrôles de timeline"""
@@ -361,7 +458,7 @@ class MainWindow(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         pitch_width = self.pitch_widget.width()
-        # Optionnel : laisse un peu de marge si besoin (ex: -40)
+        # Optionnel : laisse un peu de marge si besoin (ex: -40)
         self.timeline_widget.setMaximumWidth(pitch_width)
 
 
@@ -438,13 +535,11 @@ class MainWindow(QWidget):
                 self.update_scene(self.timeline_widget.value())
     
 
-
-
-
-
-
     def update_scene(self, frame_number):
         """Met à jour la scène"""
+        # NOUVEAU: Mettre à jour le score
+        self._update_score_display(frame_number)
+        
         # Si en simulation mode et qu'on a cliqué à un nouvel endroit, redéfinir la loop
         if (self.simulation_mode and 
             not self.is_playing and 
@@ -499,13 +594,6 @@ class MainWindow(QWidget):
         self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
 
 
-
-
-
-
-
-
-
     def _draw_players(self, half, idx):
         """Dessine tous les joueurs"""
         for side, ids, colors in [("Home", home_ids, home_colors), 
@@ -547,8 +635,6 @@ class MainWindow(QWidget):
             # Mettre à jour l'affichage des temps
             self._update_loop_times_display()
 
-
-
     def toggle_play_pause(self):
         """Play/pause avec gestion spéciale pour simulation"""
         
@@ -571,15 +657,9 @@ class MainWindow(QWidget):
             self.timer.start()
         self.is_playing = not self.is_playing
 
-
-
-
     def update_speed(self, idx):
         intervals = [160, 80, 40, 20, 10, 5]
         self.timer.setInterval(intervals[idx])
-    
-   
-
 
     def next_frame(self):
         """Gestion des frames avec système de loop en simulation"""
@@ -604,16 +684,9 @@ class MainWindow(QWidget):
         # CORRECTION: Il manquait cette ligne cruciale !
         self.timeline_widget.setValue(next_frame)
 
-
-
-
-
     def _pause_match(self):
         if self.is_playing:
             self.toggle_play_pause()
-    
-
-
 
     # Méthodes pour les annotations
     def set_tool_mode(self, mode):
