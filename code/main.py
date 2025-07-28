@@ -6,7 +6,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton,
     QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup,
-    QRadioButton, QGroupBox, QDoubleSpinBox
+    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize
 from PyQt5.QtGui import QColor, QIcon
@@ -200,14 +200,40 @@ class MainWindow(QWidget):
         control_layout.addWidget(QLabel("Speed"))
         control_layout.addWidget(self.speed_box)
         
-        # Play/pause icons (déclarées ici, c'est bien)
+        # Play/pause icons et bouton agrandi
         self.play_icon = QIcon(os.path.join(SVG_DIR, "play.svg"))
         self.pause_icon = QIcon(os.path.join(SVG_DIR, "pause.svg"))
-        self.play_button = QPushButton()
-        self.play_button.setFixedWidth(36)
+
+
+        self.play_button = QToolButton()
+        self.play_button.setFixedWidth(70)
+        self.play_button.setFixedHeight(60)
         self.play_button.setIcon(self.play_icon)
-        self.play_button.setIconSize(QSize(28, 28))  # ajuste au besoin
-        self.play_button.setText("")
+        self.play_button.setIconSize(QSize(24, 24))
+        self.play_button.setText("")  # Pas de texte au début
+        
+        # IMPORTANT: Définir le style d'affichage pour mettre le texte sous l'icône
+        self.play_button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        
+        # Style pour améliorer l'apparence
+        self.play_button.setStyleSheet("""
+            QToolButton {
+                background-color: transparent;
+                border: none;
+                font-size: 9px;
+                font-weight: bold;
+                color: #888;
+                padding-top: 10px;
+                padding-bottom: 2px;
+            }
+            QToolButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+            }
+            QToolButton:pressed {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+        """)
         control_layout.addWidget(self.play_button)
 
         # Checkboxes
@@ -367,7 +393,7 @@ class MainWindow(QWidget):
         """Active/désactive le mode simulation avec système de loop"""
         self.simulation_mode = self.simulation_button.isChecked()
         if self.simulation_mode:
-            self._pause_match()
+            self._pause_match()  # Force la pause
             # Définir les limites de la loop
             current_frame = self.timeline_widget.value()
             interval_frames = int(self.sim_interval_spin.value() * FPS)
@@ -379,7 +405,7 @@ class MainWindow(QWidget):
             # NOUVEAU: Afficher les temps de début et fin
             self._update_loop_times_display()
             
-            # Changer le texte du bouton play pour "Play Loop"
+            # MODIFIÉ: Afficher "▶ Loop" dans le bouton
             self.play_button.setText("▶ Loop")
         else:
             self.trajectory_manager.clear_trails()
@@ -388,7 +414,6 @@ class MainWindow(QWidget):
             self.loop_times_label.setText("")  # Effacer l'affichage des temps
             
         self.update_scene(self.timeline_widget.value())
-    
 
     def _update_loop_times_display(self):
         """Met à jour l'affichage des temps de début/fin de loop"""
@@ -528,21 +553,26 @@ class MainWindow(QWidget):
         """Play/pause avec gestion spéciale pour simulation"""
         
         if self.is_playing:
+            # ARRÊT - Le match passe en pause
             self.play_button.setIcon(self.play_icon)
             if self.simulation_mode:
-                self.play_button.setText("▶ Loop")
+                self.play_button.setText("▶ Loop")  # En pause → Afficher "Play Loop"
             else:
                 self.play_button.setText("")
             self.timer.stop()
         else:
+            # DÉMARRAGE - Le match commence à jouer
             self.play_button.setIcon(self.pause_icon)
             if self.simulation_mode:
                 self.simulation_loop_active = True  # Activer la loop
-                self.play_button.setText("⏸ Loop")
+                self.play_button.setText("⏸ Loop")  # En lecture → Afficher "Pause Loop"
             else:
                 self.play_button.setText("")
             self.timer.start()
         self.is_playing = not self.is_playing
+
+
+
 
     def update_speed(self, idx):
         intervals = [160, 80, 40, 20, 10, 5]
