@@ -1,5 +1,6 @@
-# annotation_tools.py
-  
+
+# annotation_tools.py - Version corrigée avec problème largeur résolu
+
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush
 from PyQt5.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup
@@ -8,7 +9,6 @@ import math
 
 from config import *
 DEFAULT_ARROW_COLOR = "#000000"
-
 
 class ArrowAnnotationManager:
     def __init__(self, scene):
@@ -22,6 +22,10 @@ class ArrowAnnotationManager:
         self.arrow_preview = None
         self.selected_arrow = None
         self.current_mode = "select"
+        self.tactical_mode = False
+
+    def set_tactical_mode(self, enabled):
+        self.tactical_mode = enabled
 
     def add_point(self, pos):
         if not self.arrow_curved:
@@ -37,52 +41,109 @@ class ArrowAnnotationManager:
         self.clear_selection()
         self.current_mode = mode
 
+    def select_arrow(self, arrow):
+        """Sélectionne une flèche spécifique"""
+        self.clear_selection()
+        self.selected_arrow = arrow
+        if arrow:
+            arrow.setSelected(True)
+            # Mettre en évidence visuellement
+
+
+
+
     def set_color(self, color):
         if self.selected_arrow:
+            color_obj = QColor(color)
             if hasattr(self.selected_arrow, 'childItems'):
                 for item in self.selected_arrow.childItems():
                     if hasattr(item, 'pen'):
                         pen = item.pen()
-                        pen.setColor(QColor(color))
+                        pen.setColor(color_obj)
                         item.setPen(pen)
+                        item.update()
                     if hasattr(item, 'brush'):
                         brush = item.brush()
-                        brush.setColor(QColor(color))
+                        brush.setColor(color_obj)
                         item.setBrush(brush)
-            else:
-                pen = self.selected_arrow.pen()
-                pen.setColor(QColor(color))
-                self.selected_arrow.setPen(pen)
+                        item.update()
+            self._highlight_arrow(self.selected_arrow, True)
         else:
             self.arrow_color = color
 
     def set_width(self, width):
+        """Met à jour la largeur de la flèche sélectionnée ou la largeur par défaut"""
         if self.selected_arrow:
+            # Sauvegarder la nouvelle largeur dans la flèche
+            self.selected_arrow.original_width = width
+            
             if hasattr(self.selected_arrow, 'childItems'):
                 for item in self.selected_arrow.childItems():
                     if hasattr(item, 'pen') and not hasattr(item, 'brush'):
                         pen = item.pen()
-                        pen.setWidth(width * 0.3)
+                        # CORRECTION: Utiliser directement la nouvelle largeur
+                        pen.setWidth(int(width * 0.3))
                         item.setPen(pen)
-            else:
-                pen = self.selected_arrow.pen()
-                pen.setWidth(width * 0.3)
-                self.selected_arrow.setPen(pen)
+            # Remettre en évidence après changement de largeur
+            self._highlight_arrow(self.selected_arrow, True)
         else:
             self.arrow_width = width
 
     def set_style(self, style):
+        """Met à jour le style de la flèche sélectionnée ou le style par défaut"""
         if self.selected_arrow:
+            # Sauvegarder les propriétés actuelles
+            old_points = getattr(self.selected_arrow, 'arrow_points', [])
+            old_pos = self.selected_arrow.pos()
+            old_width = getattr(self.selected_arrow, 'original_width', self.arrow_width)
+            
+            # Extraire la couleur de la flèche existante
+            current_color = self.arrow_color
             if hasattr(self.selected_arrow, 'childItems'):
                 for item in self.selected_arrow.childItems():
-                    if hasattr(item, 'pen') and not hasattr(item, 'brush'):
-                        pen = item.pen()
-                        pen.setStyle(Qt.SolidLine if style == "solid" else Qt.DashLine)
-                        item.setPen(pen)
-            else:
-                pen = self.selected_arrow.pen()
-                pen.setStyle(Qt.SolidLine if style == "solid" else Qt.DashLine)
-                self.selected_arrow.setPen(pen)
+                    if hasattr(item, 'pen'):
+                        current_color = item.pen().color().name()
+                        break
+            
+            if old_points:
+                # Supprimer l'ancienne flèche
+                try:
+                    self.scene.removeItem(self.selected_arrow)
+                    if self.selected_arrow in self.arrows:
+                        self.arrows.remove(self.selected_arrow)
+                except RuntimeError:
+                    pass
+                
+                # Créer la nouvelle flèche avec le nouveau style et les propriétés courantes
+                old_arrow_style = self.arrow_style
+                old_arrow_color = self.arrow_color
+                old_arrow_width = self.arrow_width
+                
+                self.arrow_style = style
+                self.arrow_color = current_color
+                self.arrow_width = old_width
+                
+                new_arrow = self.draw_arrow(old_points, preview=False)
+                
+                if new_arrow:
+                    new_arrow.arrow_points = old_points
+                    new_arrow.arrow_style = style
+                    new_arrow.original_width = old_width  # IMPORTANT: sauvegarder la largeur
+                    new_arrow.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
+                    new_arrow.setFlag(QGraphicsItemGroup.ItemIsFocusable, True)
+                    new_arrow.setAcceptHoverEvents(True)
+                    new_arrow.setZValue(999)
+                    new_arrow.setPos(old_pos)
+                    self.arrows.append(new_arrow)
+                    
+                    # Sélectionner la nouvelle flèche
+                    self.selected_arrow = new_arrow
+                    self.select_arrow(new_arrow)
+                
+                # Restaurer les anciennes valeurs par défaut
+                self.arrow_color = old_arrow_color
+                self.arrow_width = old_arrow_width
+                self.arrow_style = old_arrow_style
         else:
             self.arrow_style = style
 
@@ -109,14 +170,18 @@ class ArrowAnnotationManager:
             self.arrow_points = []
             self.remove_arrow_preview()
             return
+        
         arrow_item = self.draw_arrow(self.arrow_points, preview=False)
-        arrow_item.arrow_points = list(self.arrow_points)
-        arrow_item.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-        arrow_item.setFlag(QGraphicsItemGroup.ItemIsFocusable, True)
-        arrow_item.setAcceptHoverEvents(True)
-        arrow_item.setZValue(999)
-        arrow_item.mousePressEvent = self.arrow_mouse_press_event(arrow_item)
-        self.arrows.append(arrow_item)
+        if arrow_item:
+            arrow_item.arrow_points = list(self.arrow_points)
+            arrow_item.arrow_style = self.arrow_style
+            arrow_item.original_width = self.arrow_width  # Sauvegarder la largeur originale
+            arrow_item.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
+            arrow_item.setFlag(QGraphicsItemGroup.ItemIsFocusable, True)
+            arrow_item.setAcceptHoverEvents(True)
+            arrow_item.setZValue(999)
+            self.arrows.append(arrow_item)
+        
         self.arrow_points = []
         self.remove_arrow_preview()
 
@@ -126,15 +191,7 @@ class ArrowAnnotationManager:
         else:
             self.cancel_arrow()
 
-    def arrow_mouse_press_event(self, arrow_item):
-        def handler(event):
-            if event.button() == Qt.LeftButton:
-                self.clear_selection()
-                arrow_item.setSelected(True)
-                self.selected_arrow = arrow_item
-        return handler
-
-    def clear_selection(self):
+    def clear_selection(self):        
         for arrow in list(self.arrows):
             try:
                 arrow.setSelected(False)
@@ -153,10 +210,8 @@ class ArrowAnnotationManager:
         path = QPainterPath()
         
         if is_curved and len(pts) > 2:
-            # Mode zigzag courbé : suit les points de la courbe
             path.moveTo(pts[0])
             
-            # Créer la courbe de base
             total_length = 0
             segments = []
             for i in range(len(pts) - 1):
@@ -166,17 +221,14 @@ class ArrowAnnotationManager:
                 segments.append((pts[i], pts[i+1], seg_length))
                 total_length += seg_length
             
-            # Créer des points le long de la courbe avec oscillation
             num_points = max(int(total_length / 2), 30)
             zigzag_points = [pts[0]]
             
             for i in range(1, num_points):
                 t = i / num_points
-                # Position sur la courbe originale
                 curve_pos = self.get_point_on_curve(pts, t)
                 
-                # Oscillation perpendiculaire
-                if i < num_points - 5:  # Arrêter l'oscillation avant la fin
+                if i < num_points - 5:
                     direction = self.get_curve_direction(pts, t)
                     perp_x = -direction.y()
                     perp_y = direction.x()
@@ -188,10 +240,8 @@ class ArrowAnnotationManager:
                 
                 zigzag_points.append(curve_pos)
             
-            # Terminer en ligne droite
             zigzag_points.append(pts[-1])
             
-            # Dessiner avec des courbes lisses
             for i in range(1, len(zigzag_points)):
                 if i < len(zigzag_points) - 5:
                     mid = QPointF(
@@ -203,7 +253,6 @@ class ArrowAnnotationManager:
                     path.lineTo(zigzag_points[i])
                     
         else:
-            # Mode zigzag droit
             start, end = pts[0], pts[-1]
             
             dx = end.x() - start.x()
@@ -229,20 +278,17 @@ class ArrowAnnotationManager:
                 base_x = start.x() + t * dx
                 base_y = start.y() + t * dy
                 
-                # Arrêter l'oscillation avant la fin pour finir droit
-                if t < 0.85:  # Arrêter l'oscillation à 85% du chemin
+                if t < 0.85:
                     oscillation = 1.2 * math.sin(t * 12 * math.pi)
                     final_x = base_x + oscillation * px
                     final_y = base_y + oscillation * py
                 else:
-                    # Ligne droite pour la fin
                     final_x = base_x
                     final_y = base_y
                 
                 control_points.append(QPointF(final_x, final_y))
             
             if len(control_points) >= 2:
-                # Dessiner avec des courbes jusqu'à la zone droite
                 smooth_until = int(len(control_points) * 0.85)
                 
                 if smooth_until > 1:
@@ -255,7 +301,6 @@ class ArrowAnnotationManager:
                                            (control_points[i].y() + control_points[i+1].y()) / 2)
                         path.quadTo(control_points[i], mid_point)
                 
-                # Finir en ligne droite
                 for i in range(smooth_until, len(control_points)):
                     path.lineTo(control_points[i])
             else:
@@ -264,15 +309,12 @@ class ArrowAnnotationManager:
         return path
 
     def get_point_on_curve(self, pts, t):
-        """Obtient un point sur la courbe à la position t (0 à 1)"""
         if len(pts) == 2:
-            # Ligne droite
             return QPointF(
                 pts[0].x() + t * (pts[1].x() - pts[0].x()),
                 pts[0].y() + t * (pts[1].y() - pts[0].y())
             )
         else:
-            # Courbe multi-points (approximation)
             total_segments = len(pts) - 1
             segment_t = t * total_segments
             segment_idx = int(segment_t)
@@ -287,7 +329,6 @@ class ArrowAnnotationManager:
             )
 
     def get_curve_direction(self, pts, t):
-        """Obtient la direction de la courbe à la position t"""
         if len(pts) == 2:
             dx = pts[1].x() - pts[0].x()
             dy = pts[1].y() - pts[0].y()
@@ -296,7 +337,6 @@ class ArrowAnnotationManager:
                 return QPointF(dx/length, dy/length)
             return QPointF(1, 0)
         else:
-            # Pour une courbe multi-points, approximer la direction
             p1 = self.get_point_on_curve(pts, max(0, t - 0.01))
             p2 = self.get_point_on_curve(pts, min(1, t + 0.01))
             dx = p2.x() - p1.x()
@@ -306,11 +346,11 @@ class ArrowAnnotationManager:
                 return QPointF(dx/length, dy/length)
             return QPointF(1, 0)
 
-    def draw_arrow_head_triangle(self, start, end, width_scale=1.0):
+    def draw_arrow_head_triangle(self, start, end, width_scale=1.0, color=None):
+        """Dessine la tête de flèche triangulaire avec la couleur spécifiée"""
         dx, dy = end.x() - start.x(), end.y() - start.y()
         angle = math.atan2(dy, dx)
         
-        # Taille directement proportionnelle à width_scale
         length = ANNOTATION_ARROW_HEAD_LENGTH * width_scale
         
         angle_rad = math.radians(ANNOTATION_ARROW_HEAD_ANGLE)
@@ -326,7 +366,6 @@ class ArrowAnnotationManager:
             end.y() - length * math.sin(angle2)
         )
         
-        # Triangle sans contour pour éviter le trait à la base
         path = QPainterPath()
         path.moveTo(end)
         path.lineTo(p1)
@@ -346,20 +385,16 @@ class ArrowAnnotationManager:
         else:
             color.setAlphaF(1.0)
         
-        # Calculer la longueur de la tête pour raccourcir le corps
         width_scale = max(0.8, self.arrow_width * 0.2)
         head_length = ANNOTATION_ARROW_HEAD_LENGTH * width_scale
         
-        # Corps de la flèche (raccourci)
+        # Corps de la flèche
         body_path = QPainterPath()
         
         if self.arrow_style == "zigzag":
-            # Zigzag avec gestion des courbes - TOUJOURS en premier
             if self.arrow_curved:
-                # Pour les courbes zigzag, utiliser tous les points
                 body_path = self.create_zigzag_path(pts, self.arrow_curved)
             else:
-                # Pour zigzag droit, raccourcir comme avant
                 zigzag_pts = [pts[0]]
                 start, end = pts[-2], pts[-1]
                 dx, dy = end.x() - start.x(), end.y() - start.y()
@@ -372,7 +407,6 @@ class ArrowAnnotationManager:
                     zigzag_pts.append(end)
                 body_path = self.create_zigzag_path(zigzag_pts, self.arrow_curved)
         elif self.arrow_curved and len(pts) > 2:
-            # Mode courbe normale (pas zigzag)
             body_path.moveTo(pts[0])
             for i in range(1, len(pts)-1):
                 mid = (pts[i] + pts[i+1]) * 0.5
@@ -418,15 +452,14 @@ class ArrowAnnotationManager:
         body_item.setBrush(QBrush(Qt.NoBrush))
         group.addToGroup(body_item)
         
-        # Tête de flèche
+        # Tête de flèche - UTILISE LA MÊME COULEUR QUE LE CORPS
         if len(pts) >= 2:
             start, end = pts[-2], pts[-1]
-            head_path = self.draw_arrow_head_triangle(start, end, width_scale)
+            head_path = self.draw_arrow_head_triangle(start, end, width_scale, color)
             
             head_item = QGraphicsPathItem(head_path)
-            # Pas de contour pour avoir des bords nets
             head_item.setPen(QPen(Qt.NoPen))
-            head_item.setBrush(QBrush(color))
+            head_item.setBrush(QBrush(color))  # MÊME COULEUR QUE LE CORPS
             group.addToGroup(head_item)
         
         group.setZValue(999 if not preview else 998)
@@ -436,6 +469,7 @@ class ArrowAnnotationManager:
         return group
 
     def delete_last_arrow(self):
+        """Supprime la dernière flèche créée"""
         if self.arrows:
             arrow_item = self.arrows.pop()
             try:

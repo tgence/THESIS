@@ -1,10 +1,11 @@
-# trajectory_manager.py
+# trajectory_manager.py - Version améliorée avec trajectoires simulées
 
 from PyQt5.QtGui import QPen, QColor, QBrush
 from PyQt5.QtCore import Qt
 from collections import deque
 import numpy as np
 from config import *
+
 class TrajectoryManager:
     """Gère tous les types de trajectoires (passées et futures)"""
 
@@ -16,11 +17,13 @@ class TrajectoryManager:
         self.cached_interval = None
         self.home_colors = home_colors
         self.away_colors = away_colors
+        self.simulated_trajectories = {}  # Trajectoires tactiques
         
     def clear_trails(self):
         """Efface toutes les trajectoires"""
         self.player_trails.clear()
         self.future_trajectories.clear()
+        self.simulated_trajectories.clear()
         self.cached_frame = None
         self.cached_interval = None
         
@@ -80,7 +83,7 @@ class TrajectoryManager:
                                loop_start=None, loop_end=None, interval_seconds=10.0):
         """Dessine les trajectoires futures avec effacement progressif pendant la loop"""
         
-        # NOUVEAU: Calculer les frames de fade basé sur l'intervalle choisi
+        # Calculer les frames de fade basé sur l'intervalle choisi
         fade_frames_players = int(interval_seconds * FPS)  # Utilise l'intervalle complet
         fade_frames_ball = int(interval_seconds * FPS)     # Même chose pour la balle
         
@@ -99,7 +102,7 @@ class TrajectoryManager:
                             if current_frame is not None and current_frame > frame1:
                                 continue
                             
-                            # NOUVEAU: Logique d'opacité inversée
+                            # Logique d'opacité inversée
                             color = QColor(base_color)
                             
                             if current_frame is not None:
@@ -138,7 +141,7 @@ class TrajectoryManager:
                     if current_frame is not None and current_frame > frame1:
                         continue
                     
-                    # NOUVEAU: Même logique inversée pour la balle
+                    # Même logique inversée pour la balle
                     color = QColor(BALL_COLOR)
                     
                     if current_frame is not None:
@@ -182,3 +185,153 @@ class TrajectoryManager:
                         )
                         final_ball.setZValue(96)
                         self.pitch_widget.dynamic_items.append(final_ball)
+
+    def draw_simulated_trajectories(self, simulated_data, current_frame, loop_start, loop_end):
+        """Dessine les trajectoires simulées par-dessus les vraies trajectoires"""
+        if not simulated_data:
+            return
+        
+        # Dessiner les trajectoires des joueurs simulés
+        players_data = simulated_data.get('players', {})
+        for player_id, positions in players_data.items():
+            if len(positions) > 1:
+                # Déterminer l'équipe pour la couleur
+                side = "Home" if player_id in self.home_colors else "Away"
+                base_color = self.home_colors.get(player_id, ["#FF0000"])[0] if side == "Home" else self.away_colors.get(player_id, ["#0000FF"])[0]
+                
+                # Dessiner les segments de trajectoire avec effacement progressif
+                for i in range(len(positions) - 1):
+                    x1, y1, frame1 = positions[i]
+                    x2, y2, frame2 = positions[i + 1]
+                    
+                    # Ne dessiner que les segments futurs
+                    if current_frame is not None and current_frame > frame1:
+                        continue
+                    
+                    # Calculer l'opacité selon la distance temporelle
+                    color = QColor(base_color)
+                    if current_frame is not None:
+                        frames_until_segment = frame1 - current_frame
+                        total_frames = loop_end - loop_start
+                        
+                        if total_frames > 0:
+                            distance_factor = frames_until_segment / total_frames
+                            # Plus proche = plus opaque
+                            final_alpha = max(0.4, 1.0 - distance_factor * 0.6)
+                        else:
+                            final_alpha = 0.9
+                    else:
+                        final_alpha = 0.9
+                    
+                    color.setAlphaF(final_alpha)
+                    
+                    # Ligne plus épaisse et continue pour la simulation
+                    pen = QPen(color, TRAJECTORY_PLAYER_LINE_WIDTH * 2)
+                    pen.setStyle(Qt.SolidLine)
+                    pen.setCapStyle(Qt.RoundCap)
+                    
+                    line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
+                    line.setZValue(15)  # Au-dessus des trajectoires réelles
+                    self.pitch_widget.dynamic_items.append(line)
+        
+        # Dessiner la trajectoire de la balle simulée
+        ball_positions = simulated_data.get('ball', [])
+        if len(ball_positions) > 1:
+            for i in range(len(ball_positions) - 1):
+                x1, y1, frame1 = ball_positions[i]
+                x2, y2, frame2 = ball_positions[i + 1]
+                
+                # Ne dessiner que les segments futurs
+                if current_frame is not None and current_frame > frame1:
+                    continue
+                
+                # Calculer l'opacité pour la balle
+                color = QColor(BALL_COLOR)
+                if current_frame is not None:
+                    frames_until_segment = frame1 - current_frame
+                    total_frames = loop_end - loop_start
+                    
+                    if total_frames > 0:
+                        distance_factor = frames_until_segment / total_frames
+                        # Plus proche = plus opaque
+                        final_alpha = max(0.5, 1.0 - distance_factor * 0.5)
+                    else:
+                        final_alpha = 1.0
+                else:
+                    final_alpha = 1.0
+                
+                color.setAlphaF(final_alpha)
+                
+                # Ligne plus épaisse pour la balle simulée
+                pen = QPen(color, TRAJECTORY_BALL_LINE_WIDTH * 2)
+                pen.setStyle(Qt.SolidLine)
+                pen.setCapStyle(Qt.RoundCap)
+                
+                line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
+                line.setZValue(98)  # Au-dessus des trajectoires réelles de balle
+                self.pitch_widget.dynamic_items.append(line)
+            
+            # Position finale de la balle simulée
+            if ball_positions:
+                final_x, final_y, final_frame = ball_positions[-1]
+                
+                if current_frame is None or current_frame < final_frame:
+                    final_radius = BALL_RADIUS * 1.3
+                    pen_color = QColor(BALL_COLOR)
+                    pen_color.setAlphaF(1.0)
+                    
+                    # Cercle de destination final
+                    final_ball = self.pitch_widget.scene.addEllipse(
+                        final_x - final_radius, final_y - final_radius,
+                        final_radius * 2, final_radius * 2,
+                        QPen(pen_color, 0.6, Qt.SolidLine),
+                        QBrush(Qt.NoBrush)
+                    )
+                    final_ball.setZValue(99)
+                    self.pitch_widget.dynamic_items.append(final_ball)
+
+    def draw_non_associated_arrows(self, arrows):
+        """Dessine les flèches non associées de façon distincte"""
+        for arrow in arrows:
+            if hasattr(arrow, 'childItems'):
+                for item in arrow.childItems():
+                    if hasattr(item, 'pen'):
+                        # Rendre les flèches non associées plus transparentes
+                        pen = item.pen()
+                        color = pen.color()
+                        color.setAlphaF(0.5)
+                        pen.setColor(color)
+                        item.setPen(pen)
+                    if hasattr(item, 'brush'):
+                        brush = item.brush()
+                        color = brush.color()
+                        color.setAlphaF(0.5)
+                        brush.setColor(color)
+                        item.setBrush(brush)
+
+    def highlight_associated_arrows(self, tactical_arrows):
+        """Met en évidence les flèches associées selon leur type"""
+        for tactical_arrow in tactical_arrows:
+            arrow = tactical_arrow['arrow']
+            action_type = tactical_arrow['action_type']
+            
+            # Couleurs selon le type d'action
+            highlight_colors = {
+                'pass': '#00FF00',    # Vert pour les passes
+                'run': '#FFD700',     # Jaune pour les courses
+                'dribble': '#FF8C00'  # Orange pour les dribbles
+            }
+            
+            highlight_color = QColor(highlight_colors.get(action_type, '#FFFFFF'))
+            
+            if hasattr(arrow, 'childItems'):
+                for item in arrow.childItems():
+                    if hasattr(item, 'pen'):
+                        pen = item.pen()
+                        pen.setColor(highlight_color)
+                        pen.setWidth(pen.width() * 1.5)  # Légèrement plus épais
+                        item.setPen(pen)
+                    if hasattr(item, 'brush'):
+                        brush = item.brush()
+                        brush.setColor(highlight_color)
+                        item.setBrush(brush)

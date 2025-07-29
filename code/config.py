@@ -1,6 +1,19 @@
 # config.py
 
 from PyQt5.QtCore import Qt
+import os
+
+# --- CONFIGURATION: Always use relative paths ---
+CODE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CODE_DIR)
+SVG_DIR = os.path.join(PROJECT_ROOT, "svgs/")
+DATA_PATH = os.path.join(PROJECT_ROOT, "data/")
+
+MATCH_ID = "J03WN1"
+FILE_NAME_POS = f"DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_INFOS = f"DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_EVENTS = f"DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+
 
 # Display
 SCENE_EXTRA_GRASS = 4
@@ -70,5 +83,6 @@ TRAJECTORY_PLAYER_LINE_WIDTH = 0.3      # Traits très fins pour joueurs
 TRAJECTORY_BALL_LINE_WIDTH = 0.5        # Traits fins pour balle
 TRAJECTORY_STYLE = Qt.DotLine           # Pointillés
 TRAJECTORY_SAMPLE_RATE = 5              
-TRAJECTORY_PLAYER_MIN_OPACITY = 1
-TRAJECTORY_BALL_MIN_OPACITY = 0.95
+
+# Tactical simulation
+TACTICAL_ARROW_DETECTION_RADIUS = PLAYER_OUTER_RADIUS  # Distance max pour associer flèche-joueur
