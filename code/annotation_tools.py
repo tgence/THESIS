@@ -357,7 +357,8 @@ class CustomArrowItem(QGraphicsItemGroup):
         # ---------- CORPS ----------
         if self.arrow_style == "zigzag":
             body_path = self._create_zigzag_path(pts)
-        elif len(pts) > 2 and self.arrow_style == "solid" and self._is_curved():
+        elif len(pts) > 2 and self._is_curved():
+            # Logique courbe pour solid ET dotted
             body_path = QPainterPath()
             body_path.moveTo(pts[0])
             for i in range(1, len(pts)-1):
@@ -365,6 +366,7 @@ class CustomArrowItem(QGraphicsItemGroup):
                 body_path.quadTo(pts[i], mid)
             body_path.lineTo(pts[-1])
         else:
+            # Logique simple (2 points seulement)
             body_path = QPainterPath()
             body_path.moveTo(pts[0])
             for p in pts[1:]:
@@ -374,7 +376,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         start, end = pts[-2], pts[-1]
         dx, dy = end.x() - start.x(), end.y() - start.y()
         length = math.hypot(dx, dy)
-        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
+        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.6, self.arrow_width * 0.2)
         if length > 0:
             ratio = max(0, (length - head_length * 0.7) / length)
             new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
@@ -415,10 +417,31 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(pts) > 2:  # Mode courbe avec plusieurs points
             path.moveTo(pts[0])
             
+            # Calculer le raccourcissement pour la tête de flèche (dernier segment seulement)
+            last_start = pts[-2]
+            last_end = pts[-1]
+            last_dx = last_end.x() - last_start.x()
+            last_dy = last_end.y() - last_start.y()
+            last_length = math.sqrt(last_dx*last_dx + last_dy*last_dy)
+            
+            head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
+            
+            # Calculer le nouveau point final raccourci
+            if last_length > 0:
+                ratio = max(0, (last_length - head_length * 0.7) / last_length)
+                shortened_end = QPointF(last_start.x() + last_dx * ratio, last_start.y() + last_dy * ratio)
+            else:
+                shortened_end = last_end
+            
             # Traiter chaque segment individuellement
             for seg_idx in range(len(pts) - 1):
                 start_pt = pts[seg_idx]
-                end_pt = pts[seg_idx + 1]
+                
+                # Pour le dernier segment, utiliser le point raccourci
+                if seg_idx == len(pts) - 2:
+                    end_pt = shortened_end
+                else:
+                    end_pt = pts[seg_idx + 1]
                 
                 dx = end_pt.x() - start_pt.x()
                 dy = end_pt.y() - start_pt.y()
@@ -490,7 +513,7 @@ class CustomArrowItem(QGraphicsItemGroup):
                     for point in control_points:
                         path.lineTo(point)
                     
-        else:  # Mode segment simple (inchangé)
+        else:  # Mode segment simple (cas pas curved)
             start, end = pts[0], pts[-1]
             
             dx = end.x() - start.x()
@@ -501,20 +524,34 @@ class CustomArrowItem(QGraphicsItemGroup):
                 path.moveTo(start)
                 return path
             
-            ux = dx / length
-            uy = dy / length
+            # Calculer le raccourcissement pour la tête de flèche
+            head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
+            ratio = max(0, (length - head_length * 0.7) / length)
+            shortened_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
+            
+            # Recalculer avec le point final raccourci
+            shortened_dx = shortened_end.x() - start.x()
+            shortened_dy = shortened_end.y() - start.y()
+            shortened_length = math.sqrt(shortened_dx*shortened_dx + shortened_dy*shortened_dy)
+            
+            if shortened_length == 0:
+                path.moveTo(start)
+                return path
+            
+            ux = shortened_dx / shortened_length
+            uy = shortened_dy / shortened_length
             px = -uy  # vecteur perpendiculaire
             py = ux
             
             path.moveTo(start)
             
-            num_segments = max(int(length / 1), 30)
+            num_segments = max(int(shortened_length / 1), 30)
             control_points = []
             
             for i in range(1, num_segments + 1):
                 t = i / num_segments
-                base_x = start.x() + t * dx
-                base_y = start.y() + t * dy
+                base_x = start.x() + t * shortened_dx
+                base_y = start.y() + t * shortened_dy
                 
                 # Oscillation sinusoïdale sur 85% du tracé
                 if t < 0.85:
@@ -545,7 +582,7 @@ class CustomArrowItem(QGraphicsItemGroup):
                 for i in range(smooth_until, len(control_points)):
                     path.lineTo(control_points[i])
             else:
-                path.lineTo(end)
+                path.lineTo(shortened_end)
         
         return path
 

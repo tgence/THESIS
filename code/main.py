@@ -671,13 +671,11 @@ class MainWindow(QWidget):
             result = self.tactical_manager.associate_arrow_with_player(
                 self.arrow_context_menu.current_arrow, player_id, current_frame, xy_objects
             )
-            print(f"Flèche associée au joueur FROM: {player_id}")
     
     def _on_to_player_selected(self, player_id):
         """Joueur TO sélectionné (receveur)"""
         success = self.tactical_manager.set_pass_receiver(player_id)
-        if success:
-            print(f"Receveur défini: {player_id}")
+
     
     def _on_arrow_color_changed(self, color):
         """Couleur de flèche changée"""

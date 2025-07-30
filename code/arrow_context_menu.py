@@ -275,14 +275,35 @@ class ArrowContextMenu(QWidget):
         result = dialog.exec_()
         if result == dialog.Accepted:
             player_id = dialog.selected_player_id
+            player_text = dialog.selected_player_text
+            
             if selection_type == "from":
                 self.selected_from_player = player_id
-                self._update_player_display("from", player_id)
-                self.fromPlayerSelected.emit(player_id)
+                if player_text == "No Player":
+                    # Remettre le bouton "Select Player" et supprimer le widget joueur
+                    if self.from_player_widget:
+                        self.from_container.removeWidget(self.from_player_widget)
+                        self.from_player_widget.deleteLater()
+                        self.from_player_widget = None
+                    self.from_button.show()
+                    self.selected_from_player = None  # Important : remettre à None
+                else:
+                    self._update_player_display("from", player_id)
+                self.fromPlayerSelected.emit(player_id or "")
             else:
                 self.selected_to_player = player_id
-                self._update_player_display("to", player_id)
-                self.toPlayerSelected.emit(player_id)
+                if player_text == "No Player":
+                    # Remettre le bouton "Select Player" et supprimer le widget joueur
+                    if self.to_player_widget:
+                        self.to_container.removeWidget(self.to_player_widget)
+                        self.to_player_widget.deleteLater()
+                        self.to_player_widget = None
+                    self.to_button.show()
+                    self.selected_to_player = None  # Important : remettre à None
+                else:
+                    self._update_player_display("to", player_id)
+                self.toPlayerSelected.emit(player_id or "")
+        
         self.show()
         self.raise_()
         self.activateWindow()
