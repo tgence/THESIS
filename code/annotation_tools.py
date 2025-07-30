@@ -334,7 +334,6 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.from_player = None
         self.to_player = None
         self.original_width = width
-        # Sous-items (chemin et tête de flèche)
         self._body_item = None
         self._head_item = None
         self._draw_items()
@@ -352,43 +351,258 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(self.arrow_points) < 2:
             return
 
-        # ------ BODY -------
-        body_path = QPainterPath()
         pts = self.arrow_points
-        body_path.moveTo(pts[0])
-        for p in pts[1:-1]:
-            body_path.lineTo(p)
-        # Raccourcir le dernier segment (pour la tête)
+        body_path = None
+
+        # ---------- CORPS ----------
+        if self.arrow_style == "zigzag":
+            body_path = self._create_zigzag_path(pts)
+        elif len(pts) > 2 and self.arrow_style == "solid" and self._is_curved():
+            body_path = QPainterPath()
+            body_path.moveTo(pts[0])
+            for i in range(1, len(pts)-1):
+                mid = QPointF((pts[i].x() + pts[i+1].x())/2, (pts[i].y() + pts[i+1].y())/2)
+                body_path.quadTo(pts[i], mid)
+            body_path.lineTo(pts[-1])
+        else:
+            body_path = QPainterPath()
+            body_path.moveTo(pts[0])
+            for p in pts[1:]:
+                body_path.lineTo(p)
+
+        # Coupe le dernier segment pour laisser la place à la tête
         start, end = pts[-2], pts[-1]
         dx, dy = end.x() - start.x(), end.y() - start.y()
-        length = math.sqrt(dx*dx + dy*dy)
+        length = math.hypot(dx, dy)
         head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
         if length > 0:
             ratio = max(0, (length - head_length * 0.7) / length)
             new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-            body_path.lineTo(new_end)
-        else:
-            body_path.lineTo(end)
+            # Pour zigzag, on garde le path tel quel car il gère déjà la troncature
+            if self.arrow_style != "zigzag":
+                body_path = self._truncate_path_end(body_path, new_end)
+
         self._body_item = QGraphicsPathItem(body_path)
         pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.3)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
         if self.arrow_style == "dotted":
             pen.setStyle(Qt.DashLine)
-        elif self.arrow_style == "zigzag":
-            pen.setStyle(Qt.SolidLine)
         else:
             pen.setStyle(Qt.SolidLine)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
         self._body_item.setPen(pen)
         self._body_item.setBrush(QBrush(Qt.NoBrush))
         self.addToGroup(self._body_item)
 
-        # ------ HEAD -------
+        # ---------- HEAD ----------
         head_path = self._draw_arrow_head_triangle(start, end, head_length)
         self._head_item = QGraphicsPathItem(head_path)
         self._head_item.setPen(QPen(Qt.NoPen))
         self._head_item.setBrush(QBrush(QColor(self.arrow_color)))
         self.addToGroup(self._head_item)
+
+    def _is_curved(self):
+        """Détecte s'il faut interpréter la flèche comme courbe (au moins 3 pts)"""
+        return len(self.arrow_points) > 2
+
+    def _create_zigzag_path(self, pts):
+        """Crée un chemin zigzag sinusoïdal segment par segment"""
+        if len(pts) < 2:
+            return QPainterPath()
+        
+        path = QPainterPath()
+        
+        if len(pts) > 2:  # Mode courbe avec plusieurs points
+            path.moveTo(pts[0])
+            
+            # Traiter chaque segment individuellement
+            for seg_idx in range(len(pts) - 1):
+                start_pt = pts[seg_idx]
+                end_pt = pts[seg_idx + 1]
+                
+                dx = end_pt.x() - start_pt.x()
+                dy = end_pt.y() - start_pt.y()
+                segment_length = math.sqrt(dx*dx + dy*dy)
+                
+                if segment_length == 0:
+                    continue
+                
+                # Direction et perpendiculaire du segment (identique au cas pas curved)
+                ux = dx / segment_length
+                uy = dy / segment_length
+                px = -uy  # vecteur perpendiculaire
+                py = ux
+                
+                # Nombre de points pour ce segment (identique au cas pas curved)
+                num_segments = max(int(segment_length / 1), 30)
+                control_points = []
+                
+                # Déterminer si c'est le dernier segment
+                is_last_segment = (seg_idx == len(pts) - 2)
+                
+                # EXACTEMENT LA MÊME LOGIQUE que le cas pas curved
+                for i in range(1, num_segments + 1):
+                    t = i / num_segments
+                    base_x = start_pt.x() + t * dx
+                    base_y = start_pt.y() + t * dy
+                    
+                    # Pour le dernier segment : 85% sinusoïde + 15% droit
+                    # Pour les autres segments : 100% sinusoïde
+                    if is_last_segment and t > 0.85:
+                        # 15% finaux du dernier segment : ligne droite
+                        final_x = base_x
+                        final_y = base_y
+                    else:
+                        # Sinusoïde (identique au cas pas curved)
+                        oscillation = 1.2 * math.sin(t * 12 * math.pi)
+                        final_x = base_x + oscillation * px
+                        final_y = base_y + oscillation * py
+                    
+                    control_points.append(QPointF(final_x, final_y))
+                
+                # EXACTEMENT LE MÊME LISSAGE que le cas pas curved
+                if len(control_points) >= 2:
+                    if is_last_segment:
+                        # Pour le dernier segment : 85% lisse + 15% droit
+                        smooth_until = int(len(control_points) * 0.85)
+                    else:
+                        # Pour les autres segments : 100% lisse
+                        smooth_until = len(control_points)
+                    
+                    if smooth_until > 1:
+                        # Premier point du segment
+                        if len(control_points) > 1:
+                            path.quadTo(control_points[0], 
+                                       QPointF((control_points[0].x() + control_points[1].x()) / 2,
+                                              (control_points[0].y() + control_points[1].y()) / 2))
+                        
+                        # Points intermédiaires avec lissage
+                        for i in range(1, min(smooth_until, len(control_points) - 1)):
+                            mid_point = QPointF((control_points[i].x() + control_points[i+1].x()) / 2,
+                                               (control_points[i].y() + control_points[i+1].y()) / 2)
+                            path.quadTo(control_points[i], mid_point)
+                    
+                    # Partie droite finale (seulement pour le dernier segment)
+                    for i in range(smooth_until, len(control_points)):
+                        path.lineTo(control_points[i])
+                else:
+                    # Fallback si pas assez de points
+                    for point in control_points:
+                        path.lineTo(point)
+                    
+        else:  # Mode segment simple (inchangé)
+            start, end = pts[0], pts[-1]
+            
+            dx = end.x() - start.x()
+            dy = end.y() - start.y()
+            length = math.sqrt(dx*dx + dy*dy)
+            
+            if length == 0:
+                path.moveTo(start)
+                return path
+            
+            ux = dx / length
+            uy = dy / length
+            px = -uy  # vecteur perpendiculaire
+            py = ux
+            
+            path.moveTo(start)
+            
+            num_segments = max(int(length / 1), 30)
+            control_points = []
+            
+            for i in range(1, num_segments + 1):
+                t = i / num_segments
+                base_x = start.x() + t * dx
+                base_y = start.y() + t * dy
+                
+                # Oscillation sinusoïdale sur 85% du tracé
+                if t < 0.85:
+                    oscillation = 1.2 * math.sin(t * 12 * math.pi)
+                    final_x = base_x + oscillation * px
+                    final_y = base_y + oscillation * py
+                else:  # 15% finaux : ligne droite
+                    final_x = base_x
+                    final_y = base_y
+                
+                control_points.append(QPointF(final_x, final_y))
+            
+            # Dessiner avec courbes lisses pour la partie sinusoïdale
+            if len(control_points) >= 2:
+                smooth_until = int(len(control_points) * 0.85)
+                
+                if smooth_until > 1:
+                    path.quadTo(control_points[0], 
+                               QPointF((control_points[0].x() + control_points[1].x()) / 2,
+                                      (control_points[0].y() + control_points[1].y()) / 2))
+                    
+                    for i in range(1, min(smooth_until, len(control_points) - 1)):
+                        mid_point = QPointF((control_points[i].x() + control_points[i+1].x()) / 2,
+                                           (control_points[i].y() + control_points[i+1].y()) / 2)
+                        path.quadTo(control_points[i], mid_point)
+                
+                # Partie droite finale
+                for i in range(smooth_until, len(control_points)):
+                    path.lineTo(control_points[i])
+            else:
+                path.lineTo(end)
+        
+        return path
+
+    def _get_point_on_curve(self, pts, t):
+        """Obtient un point sur la courbe multi-segments à la position t (0-1)"""
+        if len(pts) == 2:
+            return QPointF(
+                pts[0].x() + t * (pts[1].x() - pts[0].x()),
+                pts[0].y() + t * (pts[1].y() - pts[0].y())
+            )
+        else:
+            total_segments = len(pts) - 1
+            segment_t = t * total_segments
+            segment_idx = int(segment_t)
+            local_t = segment_t - segment_idx
+            
+            if segment_idx >= total_segments:
+                return pts[-1]
+            
+            return QPointF(
+                pts[segment_idx].x() + local_t * (pts[segment_idx + 1].x() - pts[segment_idx].x()),
+                pts[segment_idx].y() + local_t * (pts[segment_idx + 1].y() - pts[segment_idx].y())
+            )
+
+    def _get_curve_direction(self, pts, t):
+        """Obtient la direction de la courbe au point t"""
+        if len(pts) == 2:
+            dx = pts[1].x() - pts[0].x()
+            dy = pts[1].y() - pts[0].y()
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                return QPointF(dx/length, dy/length)
+            return QPointF(1, 0)
+        else:
+            p1 = self._get_point_on_curve(pts, max(0, t - 0.01))
+            p2 = self._get_point_on_curve(pts, min(1, t + 0.01))
+            dx = p2.x() - p1.x()
+            dy = p2.y() - p1.y()
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0:
+                return QPointF(dx/length, dy/length)
+            return QPointF(1, 0)
+
+    def _truncate_path_end(self, path, new_end):
+        """Remplace le dernier point du path par new_end."""
+        if path.isEmpty():
+            return path
+        polys = path.toSubpathPolygons()
+        if not polys or len(polys[0]) < 2:
+            return path
+        poly = polys[0]
+        poly[-1] = new_end
+        new_path = QPainterPath()
+        new_path.moveTo(poly[0])
+        for pt in poly[1:]:
+            new_path.lineTo(pt)
+        return new_path
 
     def _draw_arrow_head_triangle(self, start, end, length):
         dx, dy = end.x() - start.x(), end.y() - start.y()
@@ -424,6 +638,5 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.to_player = player_id
 
     def refresh_visual(self):
-        print("custom refresh ")
         self._draw_items()
         self.update()
