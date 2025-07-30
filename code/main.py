@@ -432,9 +432,6 @@ class MainWindow(QWidget):
         # Connecter les signaux
         self.arrow_context_menu.fromPlayerSelected.connect(self._on_from_player_selected)
         self.arrow_context_menu.toPlayerSelected.connect(self._on_to_player_selected)
-        self.arrow_context_menu.colorChanged.connect(self._on_arrow_color_changed)
-        self.arrow_context_menu.widthChanged.connect(self._on_arrow_width_changed)
-        self.arrow_context_menu.styleChanged.connect(self._on_arrow_style_changed)
         self.arrow_context_menu.deleteRequested.connect(self._on_arrow_delete_requested)
         self.arrow_context_menu.propertiesConfirmed.connect(self._on_arrow_properties_confirmed)
     

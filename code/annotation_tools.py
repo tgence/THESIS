@@ -48,104 +48,25 @@ class ArrowAnnotationManager:
         if arrow:
             arrow.setSelected(True)
             # Mettre en évidence visuellement
-
-
-
-
+    
     def set_color(self, color):
         if self.selected_arrow:
-            color_obj = QColor(color)
-            if hasattr(self.selected_arrow, 'childItems'):
-                for item in self.selected_arrow.childItems():
-                    if hasattr(item, 'pen'):
-                        pen = item.pen()
-                        pen.setColor(color_obj)
-                        item.setPen(pen)
-                        item.update()
-                    if hasattr(item, 'brush'):
-                        brush = item.brush()
-                        brush.setColor(color_obj)
-                        item.setBrush(brush)
-                        item.update()
-            self._highlight_arrow(self.selected_arrow, True)
+            self.selected_arrow.set_color(color)
         else:
             self.arrow_color = color
 
     def set_width(self, width):
-        """Met à jour la largeur de la flèche sélectionnée ou la largeur par défaut"""
         if self.selected_arrow:
-            # Sauvegarder la nouvelle largeur dans la flèche
-            self.selected_arrow.original_width = width
-            
-            if hasattr(self.selected_arrow, 'childItems'):
-                for item in self.selected_arrow.childItems():
-                    if hasattr(item, 'pen') and not hasattr(item, 'brush'):
-                        pen = item.pen()
-                        # CORRECTION: Utiliser directement la nouvelle largeur
-                        pen.setWidth(int(width * 0.3))
-                        item.setPen(pen)
-            # Remettre en évidence après changement de largeur
-            self._highlight_arrow(self.selected_arrow, True)
+            self.selected_arrow.set_width(width)
         else:
             self.arrow_width = width
 
     def set_style(self, style):
-        """Met à jour le style de la flèche sélectionnée ou le style par défaut"""
         if self.selected_arrow:
-            # Sauvegarder les propriétés actuelles
-            old_points = getattr(self.selected_arrow, 'arrow_points', [])
-            old_pos = self.selected_arrow.pos()
-            old_width = getattr(self.selected_arrow, 'original_width', self.arrow_width)
-            
-            # Extraire la couleur de la flèche existante
-            current_color = self.arrow_color
-            if hasattr(self.selected_arrow, 'childItems'):
-                for item in self.selected_arrow.childItems():
-                    if hasattr(item, 'pen'):
-                        current_color = item.pen().color().name()
-                        break
-            
-            if old_points:
-                # Supprimer l'ancienne flèche
-                try:
-                    self.scene.removeItem(self.selected_arrow)
-                    if self.selected_arrow in self.arrows:
-                        self.arrows.remove(self.selected_arrow)
-                except RuntimeError:
-                    pass
-                
-                # Créer la nouvelle flèche avec le nouveau style et les propriétés courantes
-                old_arrow_style = self.arrow_style
-                old_arrow_color = self.arrow_color
-                old_arrow_width = self.arrow_width
-                
-                self.arrow_style = style
-                self.arrow_color = current_color
-                self.arrow_width = old_width
-                
-                new_arrow = self.draw_arrow(old_points, preview=False)
-                
-                if new_arrow:
-                    new_arrow.arrow_points = old_points
-                    new_arrow.arrow_style = style
-                    new_arrow.original_width = old_width  # IMPORTANT: sauvegarder la largeur
-                    new_arrow.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-                    new_arrow.setFlag(QGraphicsItemGroup.ItemIsFocusable, True)
-                    new_arrow.setAcceptHoverEvents(True)
-                    new_arrow.setZValue(999)
-                    new_arrow.setPos(old_pos)
-                    self.arrows.append(new_arrow)
-                    
-                    # Sélectionner la nouvelle flèche
-                    self.selected_arrow = new_arrow
-                    self.select_arrow(new_arrow)
-                
-                # Restaurer les anciennes valeurs par défaut
-                self.arrow_color = old_arrow_color
-                self.arrow_width = old_arrow_width
-                self.arrow_style = old_arrow_style
+            self.selected_arrow.set_style(style)
         else:
             self.arrow_style = style
+
 
     def remove_arrow_preview(self):
         if self.arrow_preview:
@@ -170,20 +91,13 @@ class ArrowAnnotationManager:
             self.arrow_points = []
             self.remove_arrow_preview()
             return
-        
+
         arrow_item = self.draw_arrow(self.arrow_points, preview=False)
         if arrow_item:
-            arrow_item.arrow_points = list(self.arrow_points)
-            arrow_item.arrow_style = self.arrow_style
-            arrow_item.original_width = self.arrow_width  # Sauvegarder la largeur originale
-            arrow_item.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-            arrow_item.setFlag(QGraphicsItemGroup.ItemIsFocusable, True)
-            arrow_item.setAcceptHoverEvents(True)
-            arrow_item.setZValue(999)
             self.arrows.append(arrow_item)
-        
         self.arrow_points = []
         self.remove_arrow_preview()
+
 
     def try_finish_arrow(self):
         if len(self.arrow_points) >= 2:
@@ -376,97 +290,25 @@ class ArrowAnnotationManager:
     def draw_arrow(self, pts, preview=False):
         if len(pts) < 2:
             return None
-        
-        group = QGraphicsItemGroup()
-        
-        color = QColor(self.arrow_color)
+        # Note: preview ne gère ici que la transparence de couleur, le reste est le même
+        color = self.arrow_color
+        width = self.arrow_width
+        style = self.arrow_style
         if preview:
-            color.setAlphaF(0.5)
-        else:
-            color.setAlphaF(1.0)
-        
-        width_scale = max(0.8, self.arrow_width * 0.2)
-        head_length = ANNOTATION_ARROW_HEAD_LENGTH * width_scale
-        
-        # Corps de la flèche
-        body_path = QPainterPath()
-        
-        if self.arrow_style == "zigzag":
-            if self.arrow_curved:
-                body_path = self.create_zigzag_path(pts, self.arrow_curved)
-            else:
-                zigzag_pts = [pts[0]]
-                start, end = pts[-2], pts[-1]
-                dx, dy = end.x() - start.x(), end.y() - start.y()
-                length = math.sqrt(dx*dx + dy*dy)
-                if length > 0:
-                    ratio = max(0, (length - head_length * 0.7) / length)
-                    new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-                    zigzag_pts.append(new_end)
-                else:
-                    zigzag_pts.append(end)
-                body_path = self.create_zigzag_path(zigzag_pts, self.arrow_curved)
-        elif self.arrow_curved and len(pts) > 2:
-            body_path.moveTo(pts[0])
-            for i in range(1, len(pts)-1):
-                mid = (pts[i] + pts[i+1]) * 0.5
-                body_path.quadTo(pts[i], mid)
-            # Raccourcir la fin
-            start, end = pts[-2], pts[-1]
-            dx, dy = end.x() - start.x(), end.y() - start.y()
-            length = math.sqrt(dx*dx + dy*dy)
-            if length > 0:
-                ratio = max(0, (length - head_length * 0.7) / length)
-                new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-                body_path.lineTo(new_end)
-            else:
-                body_path.lineTo(end)
-        else:
-            # Mode normal (ligne droite)
-            body_path.moveTo(pts[0])
-            for i, p in enumerate(pts[1:], 1):
-                if i == len(pts) - 1:  # Dernier point
-                    start = pts[i-1]
-                    dx, dy = p.x() - start.x(), p.y() - start.y()
-                    length = math.sqrt(dx*dx + dy*dy)
-                    if length > 0:
-                        ratio = max(0, (length - head_length * 0.7) / length)
-                        new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-                        body_path.lineTo(new_end)
-                    else:
-                        body_path.lineTo(p)
-                else:
-                    body_path.lineTo(p)
-        
-        body_item = QGraphicsPathItem(body_path)
-        pen = QPen(color, self.arrow_width * 0.3)
-        
-        if self.arrow_style == "dotted":
-            pen.setStyle(Qt.DashLine)
-        else:
-            pen.setStyle(Qt.SolidLine)
-        
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        body_item.setPen(pen)
-        body_item.setBrush(QBrush(Qt.NoBrush))
-        group.addToGroup(body_item)
-        
-        # Tête de flèche - UTILISE LA MÊME COULEUR QUE LE CORPS
-        if len(pts) >= 2:
-            start, end = pts[-2], pts[-1]
-            head_path = self.draw_arrow_head_triangle(start, end, width_scale, color)
-            
-            head_item = QGraphicsPathItem(head_path)
-            head_item.setPen(QPen(Qt.NoPen))
-            head_item.setBrush(QBrush(color))  # MÊME COULEUR QUE LE CORPS
-            group.addToGroup(head_item)
-        
-        group.setZValue(999 if not preview else 998)
-        group.arrow_points = list(pts)
-        self.scene.addItem(group)
-        
-        return group
+            # On ajoute un alpha pour la preview (ex : transparence 0.5)
+            col = QColor(color)
+            col.setAlphaF(0.5)
+            color = col.name(QColor.HexArgb)  # force alpha
+        arrow = CustomArrowItem(
+            arrow_points=pts,
+            color=color,
+            width=width,
+            style=style
+        )
+        arrow.setZValue(999 if not preview else 998)
+        self.scene.addItem(arrow)
+        return arrow
+
 
     def delete_last_arrow(self):
         """Supprime la dernière flèche créée"""
@@ -477,3 +319,111 @@ class ArrowAnnotationManager:
             except RuntimeError:
                 pass
         self.clear_selection()
+
+
+
+
+class CustomArrowItem(QGraphicsItemGroup):
+    """Flèche graphique avec attributs métier et méthode de rafraîchissement."""
+    def __init__(self, arrow_points, color, width, style, parent=None):
+        super().__init__(parent)
+        self.arrow_points = list(arrow_points)
+        self.arrow_color = color
+        self.arrow_width = width
+        self.arrow_style = style
+        self.from_player = None
+        self.to_player = None
+        self.original_width = width
+        # Sous-items (chemin et tête de flèche)
+        self._body_item = None
+        self._head_item = None
+        self._draw_items()
+
+    def _draw_items(self):
+        # Supprimer anciens items du groupe
+        for item in [self._body_item, self._head_item]:
+            if item is not None:
+                try:
+                    self.removeFromGroup(item)
+                    item.setParentItem(None)
+                except Exception:
+                    pass
+
+        if len(self.arrow_points) < 2:
+            return
+
+        # ------ BODY -------
+        body_path = QPainterPath()
+        pts = self.arrow_points
+        body_path.moveTo(pts[0])
+        for p in pts[1:-1]:
+            body_path.lineTo(p)
+        # Raccourcir le dernier segment (pour la tête)
+        start, end = pts[-2], pts[-1]
+        dx, dy = end.x() - start.x(), end.y() - start.y()
+        length = math.sqrt(dx*dx + dy*dy)
+        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
+        if length > 0:
+            ratio = max(0, (length - head_length * 0.7) / length)
+            new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
+            body_path.lineTo(new_end)
+        else:
+            body_path.lineTo(end)
+        self._body_item = QGraphicsPathItem(body_path)
+        pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.3)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        if self.arrow_style == "dotted":
+            pen.setStyle(Qt.DashLine)
+        elif self.arrow_style == "zigzag":
+            pen.setStyle(Qt.SolidLine)
+        else:
+            pen.setStyle(Qt.SolidLine)
+        self._body_item.setPen(pen)
+        self._body_item.setBrush(QBrush(Qt.NoBrush))
+        self.addToGroup(self._body_item)
+
+        # ------ HEAD -------
+        head_path = self._draw_arrow_head_triangle(start, end, head_length)
+        self._head_item = QGraphicsPathItem(head_path)
+        self._head_item.setPen(QPen(Qt.NoPen))
+        self._head_item.setBrush(QBrush(QColor(self.arrow_color)))
+        self.addToGroup(self._head_item)
+
+    def _draw_arrow_head_triangle(self, start, end, length):
+        dx, dy = end.x() - start.x(), end.y() - start.y()
+        angle = math.atan2(dy, dx)
+        angle_rad = math.radians(ANNOTATION_ARROW_HEAD_ANGLE)
+        angle1 = angle + angle_rad
+        angle2 = angle - angle_rad
+        p1 = QPointF(end.x() - length * math.cos(angle1), end.y() - length * math.sin(angle1))
+        p2 = QPointF(end.x() - length * math.cos(angle2), end.y() - length * math.sin(angle2))
+        path = QPainterPath()
+        path.moveTo(end)
+        path.lineTo(p1)
+        path.lineTo(p2)
+        path.closeSubpath()
+        return path
+
+    def set_color(self, color):
+        self.arrow_color = color
+        self.refresh_visual()
+
+    def set_width(self, width):
+        self.arrow_width = width
+        self.refresh_visual()
+
+    def set_style(self, style):
+        self.arrow_style = style
+        self.refresh_visual()
+
+    def set_from_player(self, player_id):
+        self.from_player = player_id
+
+    def set_to_player(self, player_id):
+        self.to_player = player_id
+
+    def refresh_visual(self):
+        print("custom refresh ")
+        self._draw_items()
+        self.update()
