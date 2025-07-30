@@ -23,6 +23,8 @@ from frame_utils import FrameManager, PossessionTracker
 from custom_slider import TimelineWidget
 from score_manager import ScoreManager
 from tactical_simulation import TacticalSimulationManager
+from camera.camera_manager import CameraManager  
+from camera.camera_controls import CameraControlWidget
 from config import *
 import qt_material
 
@@ -117,6 +119,7 @@ class MainWindow(QWidget):
         self.annotation_manager = None
         self.tactical_manager = None  # Gestionnaire de simulation tactique
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
+        self.camera_manager = None  # Initialisé après pitch_widget
         
         # Menu contextuel pour flèches
         self.arrow_context_menu = None
@@ -136,7 +139,8 @@ class MainWindow(QWidget):
         self._setup_ui()
         self._setup_managers()
         self._connect_signals()
-        
+        self._apply_startup_zoom()
+
         self.update_scene(0)
     
     def _setup_ui(self):
@@ -172,6 +176,7 @@ class MainWindow(QWidget):
         
         # Panel droit (outils) - SIMPLIFIÉ
         tools_panel = self._create_tools_panel()
+
         
         main_layout.addLayout(left_panel, stretch=8)
         main_layout.addLayout(tools_panel, stretch=2)
@@ -398,7 +403,14 @@ class MainWindow(QWidget):
             self.annotation_manager, self.pitch_widget, 
             home_ids, away_ids, home_colors, away_colors
         )
-        
+        self.camera_manager = CameraManager(self.pitch_widget)
+        self.camera_control_widget = CameraControlWidget(self.camera_manager, self)
+        # Intégrer le widget caméra dans le panneau d'outils
+        tools_layout = self.layout().itemAt(1).layout()  # Panel droit
+        tools_layout.insertWidget(0, self.camera_control_widget)
+        tools_layout.insertWidget(1, QLabel("─────────────"))
+
+
         # Menu contextuel pour flèches
         self.arrow_context_menu = ArrowContextMenu(self)
         self._setup_arrow_context_menu()
@@ -439,6 +451,12 @@ class MainWindow(QWidget):
         """Connecte tous les signaux"""
         self.play_button.clicked.connect(self.toggle_play_pause)
         self.speed_box.currentIndexChanged.connect(self.update_speed)
+        # === NOUVEAUX : Signaux caméra ===
+        self.camera_control_widget.modeChanged.connect(self._on_camera_mode_changed)
+        self.camera_control_widget.zoomInRequested.connect(self._on_zoom_in)
+        self.camera_control_widget.zoomOutRequested.connect(self._on_zoom_out)
+        self.camera_control_widget.resetZoomRequested.connect(self._on_reset_zoom)
+
         
         # Event filters
         self.installEventFilter(self)
@@ -446,6 +464,15 @@ class MainWindow(QWidget):
         self.pitch_widget.view.viewport().setFocusPolicy(Qt.StrongFocus)
         self.pitch_widget.view.viewport().setFocus()
     
+
+    
+    def _apply_startup_zoom(self):
+        """Applique le zoom de démarrage une fois que tout est initialisé"""
+        if self.camera_manager:
+            # Réappliquer le zoom "full" pour avoir le bon zoom au démarrage
+            self.camera_manager._set_view_immediately("full")
+
+
     def _on_filter_update(self):
         """Callback pour mise à jour des filtres"""
         active_actions = self.action_filter.get_filtered_actions()
@@ -551,7 +578,11 @@ class MainWindow(QWidget):
         
         # Balle
         ball_xy = xy_objects[half]["Ball"].xy[idx]
-        self.pitch_widget.draw_ball(ball_xy[0], ball_xy[1])
+        ball_x, ball_y = ball_xy[0], ball_xy[1]
+        self.pitch_widget.draw_ball(ball_x, ball_y)
+        
+        # === NOUVEAU : Mettre à jour la position de la balle dans le gestionnaire de caméra ===
+        self.camera_manager.update_ball_position(ball_x, ball_y)
         
         # Offside
         possession_team = PossessionTracker.get_possession_for_frame(possession, half, idx)
@@ -718,10 +749,29 @@ class MainWindow(QWidget):
             self.annotation_manager.clear_selection()
         self.arrow_context_menu.close()
     
-    def _on_arrow_properties_confirmed(self):
-        """Confirmation des propriétés de flèche"""
-        # Le menu se fermera automatiquement
-        pass
+    # === NOUVEAUX : Gestionnaires d'événements caméra ===
+    def _on_camera_mode_changed(self, mode):
+        """Gestionnaire pour changement de mode caméra"""
+        success = self.camera_manager.set_camera_mode(mode, animate=True)
+        if success:
+            # Mettre à jour le statut de suivi de balle
+            is_following = (mode == "ball")
+            self.camera_control_widget.update_ball_status(is_following)
+    
+    def _on_zoom_in(self):
+        """Gestionnaire pour zoom avant"""
+        self.camera_manager.zoom_in(1.2)
+    
+    def _on_zoom_out(self):
+        """Gestionnaire pour zoom arrière"""
+        self.camera_manager.zoom_out(0.83)
+    
+    def _on_reset_zoom(self):
+        """Gestionnaire pour reset du zoom"""
+        self.camera_manager.reset_zoom()
+        # AJOUTER CETTE LIGNE :
+        self.camera_control_widget.set_mode("full")
+
     
     # Event handling
     def keyPressEvent(self, event):
@@ -798,6 +848,14 @@ class MainWindow(QWidget):
                 parent = parent.parentItem()
         
         return None
+
+
+    def _on_arrow_properties_confirmed(self):
+            """Confirmation des propriétés de flèche"""
+            # Le menu se fermera automatiquement
+            pass
+    
+
 
 
 if __name__ == '__main__':
