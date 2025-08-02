@@ -203,7 +203,7 @@ class CameraControlWidget(QWidget):
         self.info_label.setText(f"Active: {mode_name}")
     
     def update_ball_status(self, is_following):
-        """Met à jour le statut de suivi de balle - SUPPRESSION DE L'ÉTOILE"""
+        """Met à jour le statut de suivi de balle"""
         ball_btn = self.mode_buttons.get("ball")
         if ball_btn:
             # Garder toujours "BALL" sans étoile
@@ -325,7 +325,7 @@ class CameraOverlayWidget(QWidget):
                 background-color: rgba(70, 70, 70, 220);
             }
             QPushButton:checked {
-                background-color: #4CAF50;
+                background-color: #2196F3;
                 font-weight: bold;
             }
             QLabel {
@@ -343,15 +343,6 @@ class CameraOverlayWidget(QWidget):
         # Mettre à jour l'état des boutons
         for key, btn in self.mode_buttons.items():
             btn.setChecked(key == mode_key)
-            
-            # Style spécial pour Ball
-            if key == "ball" and key == mode_key:
-                btn.setStyleSheet("""
-                    QPushButton:checked {
-                        background-color: #2196F3;
-                        font-weight: bold;
-                    }
-                """)
-        
+      
         # Émettre le signal
         self.modeChanged.emit(mode_key)

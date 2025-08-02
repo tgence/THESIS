@@ -1,3 +1,4 @@
+# pitch_widget
 import numpy as np
 import math
 from PyQt5.QtWidgets import (
@@ -56,8 +57,8 @@ class PitchWidget(QWidget):
         PITCH_LENGTH = self.PITCH_LENGTH
         PITCH_WIDTH = self.PITCH_WIDTH
         grass = QGraphicsRectItem(
-            X_MIN - SCENE_EXTRA_GRASS, Y_MIN - SCENE_EXTRA_GRASS,
-            PITCH_LENGTH + 2*SCENE_EXTRA_GRASS, PITCH_WIDTH + 2*SCENE_EXTRA_GRASS
+            X_MIN - 2*SCENE_EXTRA_GRASS, Y_MIN - SCENE_EXTRA_GRASS,
+            PITCH_LENGTH + 4*SCENE_EXTRA_GRASS, PITCH_WIDTH + 2*SCENE_EXTRA_GRASS
         )
         grass.setBrush(QBrush(QColor("#1b5e20")))
         grass.setPen(QPen(Qt.NoPen))
@@ -140,14 +141,15 @@ class PitchWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        MARGIN = SCENE_EXTRA_GRASS
         rect = QRectF(
-        self.X_MIN - SCENE_EXTRA_GRASS,
-        self.Y_MIN - SCENE_EXTRA_GRASS,
-        self.PITCH_LENGTH + 2*SCENE_EXTRA_GRASS,
-        self.PITCH_WIDTH + 2*SCENE_EXTRA_GRASS
+            self.X_MIN - 2*MARGIN,
+            self.Y_MIN - MARGIN,
+            self.PITCH_LENGTH + 4*MARGIN,
+            self.PITCH_WIDTH + 2*MARGIN
         )
         self.view.setSceneRect(rect)
-        self.view.fitInView(rect, Qt.KeepAspectRatio)
+        #self.view.fitInView(rect, Qt.KeepAspectRatio)
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, velocity=0, display_orientation=False, z_offset=10):
         # Dessin d’un joueur avec orientation

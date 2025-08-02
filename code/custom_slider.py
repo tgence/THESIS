@@ -161,13 +161,13 @@ class TimelineWidget(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 30, 20, 5)
+        layout.setContentsMargins(0, 30, 0, 5)
         layout.setSpacing(0)
 
         parent_width = self.parent().width() if self.parent() else 900
         margin_buttons = 250
         timeline_width = max(MIN_TIMELINE_WIDTH, min(parent_width - margin_buttons, MAX_TIMELINE_WIDTH))
-        self.setMaximumWidth(timeline_width)
+        self.setFixedWidth(timeline_width)
 
         # Bar d'emojis
         self.markers_container = QWidget(self)

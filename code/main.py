@@ -63,6 +63,7 @@ player_out_frames  = build_player_out_frames(events, FPS, n_frames_firstHalf)
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
 
+
 def get_frame_data(frame_number):
     if frame_number < n_frames_firstHalf:
         return "firstHalf", frame_number, "1st Half"
@@ -139,17 +140,23 @@ class MainWindow(QWidget):
         self._setup_ui()
         self._setup_managers()
         self._connect_signals()
-        self._apply_startup_zoom()
+
 
         self.update_scene(0)
-    
+        QTimer.singleShot(1, lambda: self.camera_manager.set_camera_mode("full", animate=False))
+
+
+
     def _setup_ui(self):
         """Configure l'interface utilisateur"""
         main_layout = QHBoxLayout(self)
         
         # Panel gauche
         left_panel = QVBoxLayout()
-        
+        # === NOUVEAU : Container pour la partie gauche avec taille fixe ===
+        left_container = QWidget()
+        left_container.setFixedWidth(LEFT_PANEL_SIZE)  # ← TAILLE FIXE (ajustez selon vos besoins)
+        left_container.setLayout(left_panel)
         # Zone de score en haut
         score_layout = QHBoxLayout()
         
@@ -178,8 +185,8 @@ class MainWindow(QWidget):
         tools_panel = self._create_tools_panel()
 
         
-        main_layout.addLayout(left_panel, stretch=8)
-        main_layout.addLayout(tools_panel, stretch=2)
+        main_layout.addWidget(left_container)
+        main_layout.addLayout(tools_panel)
     
     def _update_score_display(self, frame):
         """Met à jour l'affichage du score"""
@@ -259,8 +266,6 @@ class MainWindow(QWidget):
         self.timeline_widget = TimelineWidget(n_frames, n_frames_firstHalf, n_frames_secondHalf)
         self.timeline_widget.frameChanged.connect(self.update_scene)
         self.timeline_widget.set_actions(self.actions_data)
-        self.timeline_widget.setMaximumWidth(900)
-        self.timeline_widget.setMinimumWidth(min(700, self.pitch_widget.width()))
         nav_layout.addWidget(self.timeline_widget)
         nav_layout.addWidget(create_nav_button("5s >", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, 5 * FPS, "Forward 5 seconds", self.jump_frames))
         nav_layout.addWidget(create_nav_button("1m >", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, 60 * FPS, "Forward 1 minute", self.jump_frames))
@@ -269,7 +274,7 @@ class MainWindow(QWidget):
 
         # Speed control
         self.speed_box = QComboBox()
-        self.speed_box.setMinimumWidth(80)
+        self.speed_box.setMinimumWidth(60)
         for label, _ in [("x0.25", 160), ("x0.5", 80), ("x1", 40), ("x2", 20), ("x4", 10), ("x16", 5)]:
             self.speed_box.addItem(label)
         
@@ -282,7 +287,7 @@ class MainWindow(QWidget):
         self.pause_icon = QIcon(os.path.join(SVG_DIR, "pause.svg"))
 
         self.play_button = QToolButton()
-        self.play_button.setFixedWidth(70)
+        self.play_button.setFixedWidth(60)
         self.play_button.setFixedHeight(60)
         self.play_button.setIcon(self.play_icon)
         self.play_button.setIconSize(QSize(24, 24))
@@ -321,6 +326,7 @@ class MainWindow(QWidget):
         # Info label
         self.info_label = QLabel("")
         self.info_label.setAlignment(Qt.AlignCenter)
+        self.info_label.setFixedWidth(100)
         control_layout.addWidget(self.info_label)
         
         parent_layout.addLayout(control_layout)
@@ -367,7 +373,7 @@ class MainWindow(QWidget):
         tools_panel.addWidget(self.simulation_info)
         
         # Annotation tools - SIMPLIFIÉ
-        tools_panel.addWidget(QLabel("─────────────"))
+        tools_panel.addWidget(QLabel("────────────────"))
         tools_panel.addWidget(QLabel("Annotation"))
         
         self.select_button = QPushButton("Selection")
@@ -392,8 +398,8 @@ class MainWindow(QWidget):
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        pitch_width = self.pitch_widget.width()
-        self.timeline_widget.setMaximumWidth(pitch_width)
+
+
 
     def _setup_managers(self):
         """Initialise les managers"""
@@ -408,7 +414,7 @@ class MainWindow(QWidget):
         # Intégrer le widget caméra dans le panneau d'outils
         tools_layout = self.layout().itemAt(1).layout()  # Panel droit
         tools_layout.insertWidget(0, self.camera_control_widget)
-        tools_layout.insertWidget(1, QLabel("─────────────"))
+        tools_layout.insertWidget(1, QLabel("────────────────"))
 
 
         # Menu contextuel pour flèches
@@ -465,12 +471,7 @@ class MainWindow(QWidget):
         self.pitch_widget.view.viewport().setFocus()
     
 
-    
-    def _apply_startup_zoom(self):
-        """Applique le zoom de démarrage une fois que tout est initialisé"""
-        if self.camera_manager:
-            # Réappliquer le zoom "full" pour avoir le bon zoom au démarrage
-            self.camera_manager._set_view_immediately("full")
+
 
 
     def _on_filter_update(self):

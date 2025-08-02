@@ -49,7 +49,7 @@ class CameraManager:
     def _save_full_view(self):
         """Sauvegarde la vue complète du terrain avec zoom de base"""
         # Vue complète par défaut au démarrage - ZOOM TRÈS PROCHE
-        margin = SCENE_EXTRA_GRASS * 0.01
+        margin = SCENE_EXTRA_GRASS
         self.full_view_rect = QRectF(
             self.pitch_widget.X_MIN - margin,
             self.pitch_widget.Y_MIN - margin,
@@ -132,39 +132,52 @@ class CameraManager:
                 PITCH_LENGTH/2 + margin*2,
                 PITCH_WIDTH + margin*2
             )
-            
+
+        # Dans camera_manager.py, remplace les corners par ceci:
+
         elif mode == "top_left_corner":
+            # TLC: s'affiche en BAS à gauche sur l'écran (à cause de l'inversion Y)
+            # Gauche: derrière but gauche, Droite: milieu terrain
+            # Du milieu vers le bas du terrain (Y_MAX)
             return QRectF(
-                X_MIN - margin,
-                Y_MAX - corner_size,
-                corner_size,
-                corner_size + margin
+                X_MIN - 8,                        # Derrière le but gauche
+                Y_MIN + (PITCH_WIDTH * 0.4),      # Commence au milieu du terrain
+                (PITCH_LENGTH/2) + 8,             # Largeur jusqu'au milieu
+                PITCH_WIDTH * 0.6 + margin        # 60% vers le bas (Y_MAX)
             )
             
         elif mode == "top_right_corner":
+            # TRC: s'affiche en BAS à droite sur l'écran (à cause de l'inversion Y)
+            # Gauche: milieu terrain, Droite: derrière but droit
+            # Du milieu vers le bas du terrain (Y_MAX)
             return QRectF(
-                X_MAX - corner_size + margin,
-                Y_MAX - corner_size,
-                corner_size,
-                corner_size + margin
+                X_MIN + PITCH_LENGTH,     # Depuis milieu terrain
+                Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain (+ ((PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2))
+                PITCH_LENGTH // 2 ,            # Largeur jusqu'au bout + derrière
+                PITCH_WIDTH * 0.8        # 60% vers le bas (Y_MAX)
             )
             
         elif mode == "bottom_left_corner":
+            # BLC: s'affiche en HAUT à gauche sur l'écran (à cause de l'inversion Y)
+            # Gauche: derrière but gauche, Droite: milieu terrain
+            # Du haut du terrain vers le milieu
             return QRectF(
-                X_MIN - margin,
-                Y_MIN - margin,
-                corner_size,
-                corner_size + margin
+                X_MIN + PITCH_LENGTH,     # Depuis milieu terrain
+                Y_MIN,                            # Tout en haut (Y_MIN)
+                (PITCH_LENGTH/2) + 13,            # Largeur jusqu'au bout + derrière
+                PITCH_WIDTH * 0.6                 # 60% vers le milieu
             )
             
         elif mode == "bottom_right_corner":
+            # BRC: s'affiche en HAUT à droite sur l'écran (à cause de l'inversion Y)
+            # Gauche: milieu terrain, Droite: derrière but droit
+            # Du haut du terrain vers le milieu
             return QRectF(
-                X_MAX - corner_size + margin,
-                Y_MIN - margin,
-                corner_size,
-                corner_size + margin
+                X_MIN + (PITCH_LENGTH/2) - 5,     # Depuis milieu terrain
+                Y_MIN,                            # Tout en haut (Y_MIN)
+                (PITCH_LENGTH/2) + 13,            # Largeur jusqu'au bout + derrière
+                PITCH_WIDTH * 0.6                 # 60% vers le milieu
             )
-            
         elif mode == "penalty_left":
             penalty_area_y = Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH)/2
             return QRectF(
@@ -184,34 +197,67 @@ class CameraManager:
             )
         
         return self.full_view_rect
-    
+        
     def _set_view_immediately(self, mode):
-        """NOUVELLE MÉTHODE : Zoom manuel sans fitInView"""
+        """Debug version pour comprendre les différences"""
+        print(f"\n=== _set_view_immediately called with mode: {mode} ===")
+        
         target_rect = self._get_mode_rect(mode)
+        print(f"Target rect: {target_rect}")
         
         # Calculer la transformation manuellement pour conserver scale(1, -1)
         view_rect = self.view.viewport().rect()
+        print(f"View rect: {view_rect}")
         
         # Calculer le facteur de zoom pour faire tenir le rectangle cible
         scale_x = view_rect.width() / target_rect.width()
         scale_y = view_rect.height() / target_rect.height()
-        scale_factor = min(scale_x, scale_y) * 0.9  # 0.9 pour une petite marge
+        scale_factor = min(scale_x, scale_y) * 0.9
+        print(f"Calculated scale factor: {scale_factor}")
+        
+        # État initial de la vue
+        initial_transform = self.view.transform()
+        print(f"Initial transform: {initial_transform}")
         
         # Centre du rectangle cible
         center = target_rect.center()
+        print(f"Target center: {center}")
         
         # Appliquer la transformation SANS écraser scale(1, -1)
         transform = QTransform()
-        # D'abord le zoom
         transform.scale(scale_factor, scale_factor)
-        # Puis l'inversion Y (CRITIQUE pour maintenir le référentiel)
         transform.scale(1, -1)
         
-        # Appliquer la transformation
+        print(f"New transform before applying: {transform}")
         self.view.setTransform(transform)
         
         # Centrer sur le point d'intérêt
         self.view.centerOn(center)
+        print(f"Centered on: {center}")
+        
+        # Zoom supplémentaire
+        extra_zoom_factors = {
+            "full": 2.5,
+            "ball": 1.5,
+            "penalty_left": 1.5,
+            "penalty_right": 1.5,
+            "top_left_corner": 1.3,
+            "top_right_corner": 1.3,
+            "bottom_left_corner": 1.3,
+            "bottom_right_corner": 1.3,
+            "left_half": 1.2,
+            "right_half": 1.2,
+        }
+        
+        if mode in extra_zoom_factors:
+            extra_factor = extra_zoom_factors[mode]
+            print(f"Applying extra zoom: {extra_factor}")
+            self.view.scale(extra_factor, extra_factor)
+            
+        final_transform = self.view.transform()
+        print(f"Final transform: {final_transform}")
+        print("=== End _set_view_immediately ===\n")
+
     
     def _animate_to_mode(self, mode):
         """Animation simplifiée vers le mode"""
