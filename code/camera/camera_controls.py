@@ -70,14 +70,12 @@ class CameraControlWidget(QWidget):
         # Définir les boutons et leurs positions dans la grille (sans Full)
         button_config = [
             ("ball", "Ball", 0, 0),
-            ("left_half", "LH", 0, 1),
-            ("right_half", "RH", 1, 0),
-            ("top_left_corner", "TLC", 1, 1),
-            ("top_right_corner", "TRC", 2, 0),
-            ("bottom_left_corner", "BLC", 2, 1),
-            ("bottom_right_corner", "BRC", 3, 0),
-            ("penalty_left", "LP", 3, 1),
-            ("penalty_right", "RP", 4, 0),
+            ("top_left_corner", "TLC", 0, 1),
+            ("top_right_corner", "TRC", 1, 0),
+            ("bottom_left_corner", "BLC", 1, 1),
+            ("bottom_right_corner", "BRC", 2, 0),
+            ("penalty_left", "LP", 2, 1),
+            ("penalty_right", "RP", 3, 0),
         ]
         
         for mode_key, display_name, row, col in button_config:

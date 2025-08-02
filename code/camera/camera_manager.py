@@ -17,8 +17,6 @@ class CameraManager:
         # Modes de caméra disponibles (noms simplifiés) - SANS FULL
         self.CAMERA_MODES = {
             "ball": "Ball", 
-            "left_half": "LH",
-            "right_half": "RH",
             "top_left_corner": "TLC",
             "top_right_corner": "TRC", 
             "bottom_left_corner": "BLC",
@@ -98,9 +96,7 @@ class CameraManager:
         PITCH_LENGTH = self.pitch_widget.PITCH_LENGTH
         PITCH_WIDTH = self.pitch_widget.PITCH_WIDTH
         
-        margin = 5
-        corner_size = 35
-        penalty_margin = 5
+   
         
         if mode == "full":
             return self.full_view_rect
@@ -116,34 +112,17 @@ class CameraManager:
                 )
             else:
                 return self.full_view_rect
-                
-        elif mode == "left_half":
-            return QRectF(
-                X_MIN - margin,
-                Y_MIN - margin,
-                PITCH_LENGTH/2 + margin*2,
-                PITCH_WIDTH + margin*2
-            )
-            
-        elif mode == "right_half":
-            return QRectF(
-                X_MIN + PITCH_LENGTH/2 - margin,
-                Y_MIN - margin,
-                PITCH_LENGTH/2 + margin*2,
-                PITCH_WIDTH + margin*2
-            )
-
-        # Dans camera_manager.py, remplace les corners par ceci:
+    
 
         elif mode == "top_left_corner":
             # TLC: s'affiche en BAS à gauche sur l'écran (à cause de l'inversion Y)
             # Gauche: derrière but gauche, Droite: milieu terrain
             # Du milieu vers le bas du terrain (Y_MAX)
             return QRectF(
-                X_MIN - 8,                        # Derrière le but gauche
-                Y_MIN + (PITCH_WIDTH * 0.4),      # Commence au milieu du terrain
-                (PITCH_LENGTH/2) + 8,             # Largeur jusqu'au milieu
-                PITCH_WIDTH * 0.6 + margin        # 60% vers le bas (Y_MAX)
+                X_MIN,                        # Derrière le but gauche
+                 Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain
+                PITCH_LENGTH//2,             # Largeur jusqu'au milieu
+                PITCH_WIDTH * 0.8       # 60% vers le bas (Y_MAX)
             )
             
         elif mode == "top_right_corner":
@@ -151,7 +130,7 @@ class CameraManager:
             # Gauche: milieu terrain, Droite: derrière but droit
             # Du milieu vers le bas du terrain (Y_MAX)
             return QRectF(
-                X_MIN + PITCH_LENGTH,     # Depuis milieu terrain
+                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
                 Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain (+ ((PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2))
                 PITCH_LENGTH // 2 ,            # Largeur jusqu'au bout + derrière
                 PITCH_WIDTH * 0.8        # 60% vers le bas (Y_MAX)
@@ -162,10 +141,10 @@ class CameraManager:
             # Gauche: derrière but gauche, Droite: milieu terrain
             # Du haut du terrain vers le milieu
             return QRectF(
-                X_MIN + PITCH_LENGTH,     # Depuis milieu terrain
+                X_MIN,     # Depuis milieu terrain
                 Y_MIN,                            # Tout en haut (Y_MIN)
-                (PITCH_LENGTH/2) + 13,            # Largeur jusqu'au bout + derrière
-                PITCH_WIDTH * 0.6                 # 60% vers le milieu
+                PITCH_LENGTH//2    ,            # Largeur jusqu'au bout + derrière
+                PITCH_WIDTH * 0.8                 # 60% vers le milieu
             )
             
         elif mode == "bottom_right_corner":
@@ -173,90 +152,77 @@ class CameraManager:
             # Gauche: milieu terrain, Droite: derrière but droit
             # Du haut du terrain vers le milieu
             return QRectF(
-                X_MIN + (PITCH_LENGTH/2) - 5,     # Depuis milieu terrain
+                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
                 Y_MIN,                            # Tout en haut (Y_MIN)
-                (PITCH_LENGTH/2) + 13,            # Largeur jusqu'au bout + derrière
-                PITCH_WIDTH * 0.6                 # 60% vers le milieu
+                PITCH_LENGTH//2,            # Largeur jusqu'au bout + derrière
+                PITCH_WIDTH * 0.8                 # 60% vers le milieu
             )
+        
+
+
         elif mode == "penalty_left":
-            penalty_area_y = Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH)/2
             return QRectF(
-                X_MIN - penalty_margin,
-                penalty_area_y - penalty_margin,
-                PENALTY_AREA_LENGTH + penalty_margin*2,
-                PENALTY_AREA_WIDTH + penalty_margin*2
+                X_MIN - PENALTY_SPOT_DIST,
+                Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH)/2 - PENALTY_SPOT_DIST,
+                PENALTY_AREA_LENGTH + PENALTY_SPOT_DIST*2,
+                PENALTY_AREA_WIDTH + PENALTY_SPOT_DIST*2
             )
             
         elif mode == "penalty_right":
-            penalty_area_y = Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH)/2
             return QRectF(
-                X_MAX - PENALTY_AREA_LENGTH - penalty_margin,
-                penalty_area_y - penalty_margin,
-                PENALTY_AREA_LENGTH + penalty_margin*2,
-                PENALTY_AREA_WIDTH + penalty_margin*2
+                X_MAX - PENALTY_AREA_LENGTH - PENALTY_SPOT_DIST,
+                Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH)/2 - PENALTY_SPOT_DIST,
+                PENALTY_AREA_LENGTH + PENALTY_SPOT_DIST*2,
+                PENALTY_AREA_WIDTH + PENALTY_SPOT_DIST*2
             )
         
         return self.full_view_rect
         
     def _set_view_immediately(self, mode):
         """Debug version pour comprendre les différences"""
-        print(f"\n=== _set_view_immediately called with mode: {mode} ===")
         
         target_rect = self._get_mode_rect(mode)
-        print(f"Target rect: {target_rect}")
         
         # Calculer la transformation manuellement pour conserver scale(1, -1)
         view_rect = self.view.viewport().rect()
-        print(f"View rect: {view_rect}")
         
         # Calculer le facteur de zoom pour faire tenir le rectangle cible
         scale_x = view_rect.width() / target_rect.width()
         scale_y = view_rect.height() / target_rect.height()
         scale_factor = min(scale_x, scale_y) * 0.9
-        print(f"Calculated scale factor: {scale_factor}")
         
         # État initial de la vue
         initial_transform = self.view.transform()
-        print(f"Initial transform: {initial_transform}")
         
         # Centre du rectangle cible
         center = target_rect.center()
-        print(f"Target center: {center}")
         
         # Appliquer la transformation SANS écraser scale(1, -1)
         transform = QTransform()
         transform.scale(scale_factor, scale_factor)
         transform.scale(1, -1)
         
-        print(f"New transform before applying: {transform}")
         self.view.setTransform(transform)
         
         # Centrer sur le point d'intérêt
         self.view.centerOn(center)
-        print(f"Centered on: {center}")
         
         # Zoom supplémentaire
         extra_zoom_factors = {
             "full": 2.5,
-            "ball": 1.5,
+            "ball": 1.25,
             "penalty_left": 1.5,
             "penalty_right": 1.5,
-            "top_left_corner": 1.3,
-            "top_right_corner": 1.3,
-            "bottom_left_corner": 1.3,
-            "bottom_right_corner": 1.3,
-            "left_half": 1.2,
-            "right_half": 1.2,
+            "top_left_corner": 1.0,
+            "top_right_corner": 1.0,
+            "bottom_left_corner": 1.0,
+            "bottom_right_corner": 1.0,
         }
         
         if mode in extra_zoom_factors:
             extra_factor = extra_zoom_factors[mode]
-            print(f"Applying extra zoom: {extra_factor}")
             self.view.scale(extra_factor, extra_factor)
             
-        final_transform = self.view.transform()
-        print(f"Final transform: {final_transform}")
-        print("=== End _set_view_immediately ===\n")
 
     
     def _animate_to_mode(self, mode):
