@@ -9,7 +9,7 @@ from PyQt5.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
 from PyQt5.QtCore import Qt, QRectF
 
 
-
+from data_processing import get_pressure_color, build_ball_carrier_array
 from config import *
 
 class PitchWidget(QWidget):
@@ -44,8 +44,14 @@ class PitchWidget(QWidget):
     def clear_dynamic(self):
         """Efface tous les éléments dynamiques (joueurs, balles, lignes, etc)."""
         for item in self.dynamic_items:
-            self.scene.removeItem(item)
+            try:
+                scene = item.scene()
+                if scene is not None:
+                    scene.removeItem(item)
+            except Exception:
+                pass
         self.dynamic_items.clear()
+
         
     def draw_pitch(self):
         self.clear_pitch()
@@ -149,7 +155,7 @@ class PitchWidget(QWidget):
             self.PITCH_WIDTH + 2*MARGIN
         )
         self.view.setSceneRect(rect)
-        #self.view.fitInView(rect, Qt.KeepAspectRatio)
+        self.view.fitInView(rect, Qt.KeepAspectRatio)
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, velocity=0, display_orientation=False, z_offset=10):
         # Dessin d’un joueur avec orientation
@@ -236,16 +242,112 @@ class PitchWidget(QWidget):
             QPen(Qt.darkYellow, 0.3), QBrush(QColor(BALL_COLOR))
         )
         ball.setZValue(100)
-        # self.scene.addItem(ball)  # ← À VIRER absolument
         self.dynamic_items.append(ball)
         return ball
 
 
-    def draw_offside_line(self, x_offside, color="#FF40FF", style="dotted", visible=True):
+    def draw_offside_line(self, x_offside, color="#FF40FF", visible=True):
+        if not visible:
+            return None
         if visible and x_offside is not None:
             pen = QPen(QColor(color), OFFSIDE_LINE_WIDTH)
-            pen.setStyle(Qt.DotLine if style == "dotted" else Qt.SolidLine)
+            pen.setStyle(Qt.DotLine)
             line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX+1, pen)
             line.setZValue(199)
             self.dynamic_items.append(line)
             return line
+
+
+
+    def draw_pressure_zone(self, x, y, color, radius=PLAYER_OUTER_RADIUS**2, opacity=0.5):
+        """
+        Dessine un cercle translucide pour représenter une "zone de pression".
+        - x, y : coordonnées du centre (en mètres, comme tout le reste)
+        - radius : rayon en mètres
+        - color : code couleur (hex ou rgba)
+        - opacity : (float) 0-1
+        """
+
+        ellipse = QGraphicsEllipseItem(
+            x - radius, y - radius, 2*radius, 2*radius
+        )
+        ellipse.setBrush(QBrush(QColor(color)))
+        ellipse.setOpacity(opacity)
+        ellipse.setPen(QPen(Qt.NoPen))
+        ellipse.setZValue(110)  # mettre au-dessus du terrain, sous les joueurs
+        self.scene.addItem(ellipse)   # <<< OBLIGATOIRE !!!
+        self.dynamic_items.append(ellipse)
+        return ellipse
+        
+
+    def draw_pressure_zone_for_ball_carrier(
+        self,
+        xy_objects,
+        home_ids,
+        away_ids,
+        dsam,
+        orientations,
+        half,
+        idx,
+        ball_xy,
+        pressure_fn,
+        ball_carrier_array,
+        ballstatus,  
+        frame_number=0,
+        visible=True,
+    ):
+        """
+        Affiche la zone de pression autour du porteur S'IL Y EN A UN ET SI LA BALLE EST ACTIVE.
+        La couleur varie selon la pression, le rayon reste fixe.
+        """
+        if not visible:
+            return None
+
+        # Ne rien dessiner si la balle est inactive à ce frame
+        if isinstance(ballstatus, dict):
+            # Structure Floodlight standard : ballstatus['firstHalf'].code, etc.
+            # On doit concaténer comme pour possession
+            n_first = xy_objects['firstHalf']['Home'].xy.shape[0]
+            if frame_number < n_first:
+                ball_active = ballstatus['firstHalf'].code[frame_number] != 0
+            else:
+                ball_active = ballstatus['secondHalf'].code[frame_number - n_first] != 0
+        elif isinstance(ballstatus, np.ndarray) or isinstance(ballstatus, list):
+            # ballstatus est déjà aplati
+            ball_active = ballstatus[frame_number] != 0
+        else:
+            # Cas pourri mais on ne crash pas
+            ball_active = True
+
+        if not ball_active:
+            return None
+
+        carrier = ball_carrier_array[frame_number]
+        if carrier is None or carrier[0] is None:
+            return None
+
+        carrier_pid, carrier_side = carrier
+
+        press_int = pressure_fn(
+            ball_xy=ball_xy,
+            carrier_pid=carrier_pid,
+            carrier_side=carrier_side,
+            home_ids=home_ids,
+            away_ids=away_ids,  
+            xy_objects=xy_objects,
+            dsam=dsam,
+            orientations=orientations,
+            half=half,
+            idx=idx
+        )
+
+        color = get_pressure_color(press_int)
+
+
+        # Centre sur le porteur (pas la balle)
+        xy = xy_objects[half][carrier_side].xy[idx]
+        i = (home_ids if carrier_side=="Home" else away_ids).index(carrier_pid)
+        x, y = xy[2*i], xy[2*i+1]
+
+        self.draw_pressure_zone(x, y, color=color)
+        return press_int

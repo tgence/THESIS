@@ -3,26 +3,13 @@
 import os
 import pandas as pd
 import numpy as np
+from scipy.special import expit  
 import ast
 import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
 from scipy.signal import savgol_filter
 from config import *
-
-
-"""EVENT_WHITELIST = {
-    "ShotAtGoal_SuccessfulShot": {"emoji": "⚽️", "label": "Goal"},
-    "GoalKick_Play_Pass": {"emoji": "🦶", "label": "Goal Kick"},
-    "FreeKick_Play_Cross": {"emoji": "🎯", "label": "Free Kick"},
-    "FreeKick_Play_Pass": {"emoji": "🎯", "label": "Free Kick"},
-    "FreeKick_ShotAtGoal_BlockedShot": {"emoji": "🎯", "label": "Free Kick"},
-    "CornerKick_Play_Cross": {"emoji": "🟩", "label": "Corner"},
-    "Caution": {"emoji": "🟨", "label": "Yellow Card"},
-    # "CautionTeamofficial": {"emoji": "🟨", "label": "Yellow Card (Staff)"}, # Optionnel
-    # Pas de balise explicite pour Red Card/Expulsion !
-    # Penalty à traiter à part avec qualifier
-}"""
-
+from PyQt5.QtGui import QColor
 
 def safe_color(val, fallback='#aaaaaa'):
     if isinstance(val, str) and (val.startswith('#') or len(val)==6):
@@ -188,21 +175,16 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                 
                 # Mapping des événements
                 action_map = {
-                    "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "\u26BD"},
-                    "1": {"label": "GOAL", "emoji": "\u26BD"},
+                    "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "⚽"},
                     "GoalKick_Play_Pass": {"label": "Goal Kick", "emoji": "🦶"},
-                    "2": {"label": "Goal Kick", "emoji": "🦶"},
                     "FreeKick_Play_Cross": {"label": "Free Kick", "emoji": "🎯"},
                     "FreeKick_Play_Pass": {"label": "Free Kick", "emoji": "🎯"},
                     "FreeKick_ShotAtGoal_BlockedShot": {"label": "Free Kick", "emoji": "🎯"},
-                    "3": {"label": "Free Kick", "emoji": "🎯"},
-                    "CornerKick_Play_Cross": {"label": "Corner", "emoji": "🟩"},
-                    "4": {"label": "Corner", "emoji": "🟩"},
+                    "CornerKick_Play_Cross": {"label": "Corner", "emoji": "🚩"},
                     "Penalty_Play_Pass": {"label": "Penalty", "emoji": "⚪"},
                     "Penalty_ShotAtGoal_BlockedShot": {"label": "Penalty", "emoji": "⚪"},
                     "Penalty_ShotAtGoal_SuccessfulShot": {"label": "Penalty", "emoji": "⚪"},
-                    # Nouvelles actions
-                    "Offside": {"label": "Offside", "emoji": "🚩"},
+                    "Offside": {"label": "Offside", "emoji": "❌"},
                     "OutSubstitution": {"label": "Substitution", "emoji": "🔄"},
                 }
                 # je veux verif s il y a pas deja la meme action au meme temps etc il faut faire une comparaison complete
@@ -334,18 +316,220 @@ def load_data(path, file_pos, file_info, file_events):
     )
     # 6. Autres traitements
     orientations = compute_orientations(xy, player_ids)
-    #velocities = compute_velocities(xy, player_ids)
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
 
+    # 7. Ball carrier
+    ball_carrier_array = build_ball_carrier_array(home_ids, away_ids, ntot, possession, xy)
     return {
         'xy_objects': xy, 'possession': possession, 'ballstatus': ballstatus,
         'events': events, 'pitch_info': pitch,
         'teams_df': teams_df, 'home_name': home_name, 'away_name': away_name,
         'home_ids': home_ids, 'away_ids': away_ids,
-        'player_ids': player_ids, 'orientations': orientations, 'dsam': dsam,
+        'player_ids': player_ids, 'orientations': orientations, 'dsam': dsam, 'ball_carrier_array': ball_carrier_array,
         'home_colors': home_colors, 'away_colors': away_colors,
         'id2num': id2num,
         'n1': n1, 'n2': n2, 'ntot': ntot
     }
+
+
+
+   
+def format_match_time(
+    frame_idx,
+    n_frames_firstHalf,
+    n_frames_secondHalf,
+    n_frames_overtime_firstHalf=None,
+    n_frames_overtime_secondHalf=None,
+    fps=FPS
+):
+    periods = [
+        ("FirstHalf", 0, n_frames_firstHalf, 0, LENGTH_FIRST_HALF),
+        ("SecondHalf", n_frames_firstHalf, n_frames_firstHalf + n_frames_secondHalf, LENGTH_FIRST_HALF, LENGTH_FULL_TIME),
+    ]
+    # Ajout des prolongations si elles existent
+    curr_start = n_frames_firstHalf + n_frames_secondHalf
+    min_start = LENGTH_FULL_TIME
+    if n_frames_overtime_firstHalf:
+        periods.append(("OvertimeFirstHalf", curr_start, curr_start + n_frames_overtime_firstHalf, min_start, min_start + LENGTH_OVERTIME_HALF))
+        curr_start += n_frames_overtime_firstHalf
+        min_start += LENGTH_OVERTIME_HALF
+    if n_frames_overtime_secondHalf:
+        periods.append(("OvertimeSecondHalf", curr_start, curr_start + n_frames_overtime_secondHalf, min_start, min_start + LENGTH_OVERTIME_HALF))
+        curr_start += n_frames_overtime_secondHalf
+        min_start += LENGTH_OVERTIME_HALF
+
+    # Trouve la période du frame
+    for label, start_f, end_f, min_start, min_end in periods:
+        if start_f <= frame_idx < end_f:
+            rel_frame = frame_idx - start_f
+            tot_sec = rel_frame / fps
+            min_ = int(tot_sec // 60) + min_start
+            sec_ = int(tot_sec % 60)
+            if min_ < min_end:
+                return f"{min_:02d}:{sec_:02d}"
+            else:
+                # temps additionnel pour cette période
+                over = tot_sec - ((min_end - min_start) * 60)
+                return f"{min_end}:00 + {int(over // 60):02d}:{int(over % 60):02d}"
+    # Au-delà des prolongs
+    rel_frame = frame_idx - periods[-1][2]
+    tot_sec = rel_frame / fps
+    min_end = periods[-1][4]
+    return f"{min_end}:00 + {int(tot_sec // 60):02d}:{int(tot_sec % 60):02d}"
+
+
+
+
+def build_ball_carrier_array(
+    home_ids, away_ids, n_frames, possession, xy_objects, distance_threshold=3.5
+):
+    """
+    Pour chaque frame, renvoie (pid, side) du porteur (joueur de l'équipe en possession le plus proche du ballon, si < seuil).
+    Sinon, None.
+    Args :
+        home_ids, away_ids : listes d'ID joueurs
+        n_frames : total frames
+        possession : array/list/Code par frame (0=personne, 1=Home, 2=Away)
+        xy_objects : floodlight xy (pour positions joueurs et balle)
+        distance_threshold : max mètres pour considérer le porteur (sinon None)
+    Returns :
+        frame_carrier : list of (pid, side) ou None
+    """
+
+    # Aplatit possession si nécessaire
+    if isinstance(possession, dict):  # floodlight format
+        pos1 = possession['firstHalf'].code
+        pos2 = possession['secondHalf'].code
+        possession_flat = np.concatenate([pos1, pos2])
+    elif hasattr(possession, 'code'):
+        possession_flat = possession.code
+    else:
+        possession_flat = np.array(possession)
+
+    # Récupère xy
+    player_xy = {}
+    for side, ids in [('Home', home_ids), ('Away', away_ids)]:
+        arr = np.vstack([
+            xy_objects['firstHalf'][side].xy,
+            xy_objects['secondHalf'][side].xy
+        ])
+        for j, pid in enumerate(ids):
+            player_xy[pid] = arr[:, 2*j:2*j+2]
+    ball_xy = np.vstack([
+        xy_objects['firstHalf']['Ball'].xy,
+        xy_objects['secondHalf']['Ball'].xy
+    ])
+
+    frame_carrier = []
+    for i in range(n_frames):
+        poss = possession_flat[i]
+        if poss == 1:
+            ids, side = home_ids, "Home"
+        elif poss == 2:
+            ids, side = away_ids, "Away"
+        else:
+            frame_carrier.append((None, None))
+            continue
+
+        bx, by = ball_xy[i]
+        min_dist = np.inf
+        pid_proche = None
+        for pid in ids:
+            px, py = player_xy[pid][i]
+            dist = np.sqrt((bx - px)**2 + (by - py)**2)
+            if dist < min_dist:
+                min_dist = dist
+                pid_proche = pid
+        # Si trop loin, pas de porteur
+        if pid_proche is not None and min_dist < distance_threshold:
+            frame_carrier.append((pid_proche, side))
+        else:
+            frame_carrier.append((None, None))
+    return frame_carrier
+
+
+
+
+def get_pressure_color(pressure):
+    """
+    Couleur linéaire entre vert (0) et violet (1), sans autres couleurs intermédiaires.
+    """
+    green = np.array([62, 207, 68])
+    yellow = np.array([247, 182, 0])
+    red = np.array([224, 58, 37])
+    violet = np.array([176, 21, 153])
+    p = np.clip(pressure, 0, 1)
+    if p < 0.33:
+        frac = p / 0.33
+        rgb = (1 - frac) * green + frac * yellow
+    elif p < 0.66:
+        frac = (p - 0.33) / (0.33)
+        rgb = (1 - frac) * yellow + frac * red
+    else:
+        frac = (p - 0.66) / (0.34)
+        rgb = (1 - frac) * red + frac * violet
+    rgb = rgb.astype(int)
+    return QColor(*rgb)
+
+
+
+def compute_dynamic_pressing(
+    ball_xy,              # tuple (x, y) de la balle à la frame considérée
+    carrier_pid,          # id du porteur de balle à la frame considérée
+    carrier_side,         # "Home" ou "Away", camp du porteur
+    home_ids,           # liste des IDs joueurs de l'équipe Home
+    away_ids,           # liste des IDs joueurs de l'équipe Away
+    xy_objects,           # structure contenant les positions (xy) des joueurs/balle
+    dsam,                 # structure contenant les vitesses (S), etc. des joueurs
+    orientations,         # dict donnant l’orientation de chaque joueur à chaque frame
+    half,                 # "firstHalf" ou "secondHalf"
+    idx,                  # index de la frame courante dans la mi-temps
+    t_threshold=1.2,      # seuil temps pour la probabilité de pressing (~temps d’accès max au porteur)
+    sigma=0.25,           # largeur de la sigmoïde pour convertir le tti en probabilité
+    max_speed=10.0,       # vitesse max supposée d’un défenseur (m/s)
+    speed_threshold=1.5   # vitesse minimale pour qu’un défenseur soit “pris en compte” (m/s)
+):
+    """
+    Calcule la pression défensive sur le porteur de balle (carrier_pid) au frame idx.
+    """
+   # --- Position du porteur
+    try:
+        defenders_ids = home_ids if carrier_side == "Away" else away_ids
+        carrier_team_ids = home_ids if carrier_side == "Home" else away_ids
+        xy = xy_objects[half][carrier_side].xy[idx]
+        i = carrier_team_ids.index(carrier_pid)
+        px, py = xy[2*i], xy[2*i+1]
+    except Exception as e:
+        px, py = ball_xy
+
+    # Défenseurs
+    res = []
+    for pid in defenders_ids:
+        try:
+            side = "Home" if carrier_side == "Away" else "Away"
+            xy = xy_objects[half][side].xy[idx]
+            ids = xy_objects[half][side].ids if hasattr(xy_objects[half][side], 'ids') else defenders_ids
+            i = ids.index(pid)
+            x, y = xy[2*i], xy[2*i+1]
+            v = dsam[side][pid][half]["S"][idx]
+            angle = orientations[pid][idx]
+            vx, vy = v * np.cos(angle), v * np.sin(angle)
+            dist = np.sqrt((px - x)**2 + (py - y)**2)
+            speed = np.linalg.norm([vx, vy])
+            if np.isnan(x) or np.isnan(y):
+                tti = np.inf
+                proba = 0
+            elif speed < speed_threshold:
+                tti = np.inf
+                proba = 0
+            else:
+                tti = dist / (max_speed + 1e-5)
+                proba = expit((t_threshold - tti) / sigma)
+            res.append(proba)
+        except Exception as e:
+            res.append(0)
+    # Pression globale
+    intensity = 1 - np.prod(1 - np.array(res))
+    return float(np.clip(intensity, 0, 1))

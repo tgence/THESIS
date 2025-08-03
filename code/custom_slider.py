@@ -3,7 +3,7 @@
 from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
 from PyQt5.QtCore import Qt, QEvent, pyqtSignal, QRect, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QCursor, QBrush
-from visualization import format_match_time
+from data_processing import format_match_time
 from config import *
 import sys
 

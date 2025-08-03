@@ -6,7 +6,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton,
     QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup,
-    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton
+    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton, QMenu, QAction
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize, QRectF
 from PyQt5.QtGui import QColor, QIcon, QFont
@@ -15,8 +15,7 @@ from PyQt5.QtGui import QColor, QIcon, QFont
 from pitch_widget import PitchWidget
 from annotation_tools import ArrowAnnotationManager
 from arrow_context_menu import ArrowContextMenu
-from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events
-from visualization import format_match_time
+from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events, format_match_time, compute_dynamic_pressing
 from trajectory_manager import TrajectoryManager
 from ui_components import ActionFilterBar, MatchActionsDialog, create_nav_button
 from frame_utils import FrameManager, PossessionTracker
@@ -26,7 +25,6 @@ from tactical_simulation import TacticalSimulationManager
 from camera.camera_manager import CameraManager  
 from camera.camera_controls import CameraControlWidget
 from config import *
-import qt_material
 
 from qt_material import apply_stylesheet
 
@@ -41,6 +39,7 @@ data = load_data(
 
 xy_objects         = data['xy_objects']
 possession         = data['possession']
+ballstatus         = data['ballstatus']
 events             = data['events']
 pitch_info         = data['pitch_info']
 teams_df           = data['teams_df']
@@ -51,6 +50,7 @@ away_ids           = data['away_ids']
 player_ids         = data['player_ids']
 player_orientations= data['orientations']
 dsam               = data['dsam']
+ball_carrier_array = data['ball_carrier_array']
 home_colors        = data['home_colors']
 away_colors        = data['away_colors']
 id2num             = data['id2num']
@@ -274,13 +274,24 @@ class MainWindow(QWidget):
 
         # Speed control
         self.speed_box = QComboBox()
-        self.speed_box.setMinimumWidth(60)
+        self.speed_box.setMinimumWidth(80)
+        self.speed_box.setMaximumWidth(80)
         for label, _ in [("x0.25", 160), ("x0.5", 80), ("x1", 40), ("x2", 20), ("x4", 10), ("x16", 5)]:
             self.speed_box.addItem(label)
-        
         self.speed_box.setCurrentIndex(2)
-        control_layout.addWidget(QLabel("Speed"))
-        control_layout.addWidget(self.speed_box)
+
+        speed_widget = QWidget()
+        speed_layout = QHBoxLayout(speed_widget)
+
+        label_speed = QLabel("Speed")
+        label_speed.setFixedWidth(label_speed.sizeHint().width())
+
+        speed_layout.addWidget(label_speed)
+        speed_layout.addWidget(self.speed_box)
+        control_layout.addWidget(speed_widget)
+
+
+
         
         # Play/pause button
         self.play_icon = QIcon(os.path.join(SVG_DIR, "play.svg"))
@@ -315,14 +326,45 @@ class MainWindow(QWidget):
         control_layout.addWidget(self.play_button)
 
         # Checkboxes
-        self.orientation_checkbox = QCheckBox("Orientation")
-        self.orientation_checkbox.setChecked(True)
-        control_layout.addWidget(self.orientation_checkbox)
+        # === Visual overlays button with menu ===
+        self.visual_overlays_button = QToolButton()
+        self.visual_overlays_button.setText("Visual overlays")
+        self.visual_overlays_button.setPopupMode(QToolButton.InstantPopup)
+        self.visual_overlays_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.visual_overlays_button.setStyleSheet("""
+        QToolButton {
+            font-size: 12px;
+            padding: 3px 6px;
+            border: 1px solid #888;
+            border-radius: 4px;
+        }
+        """)
+
+        # Menu with checkable actions
+        overlays_menu = QMenu(self.visual_overlays_button)
+
+        # Orientation
+        self.orientation_action = QAction("Orientation", self, checkable=True)
+        self.orientation_action.setChecked(True)
+        overlays_menu.addAction(self.orientation_action)
+
+        # Offside
+        self.offside_action = QAction("Offside", self, checkable=True)
+        self.offside_action.setChecked(True)
+        overlays_menu.addAction(self.offside_action)
+
+        # Pressure zone
+        self.pressure_zone_action = QAction("Pressure zone (Ball Carrier)", self, checkable=True)
+        self.pressure_zone_action.setChecked(True)
+        overlays_menu.addAction(self.pressure_zone_action)
+
+        self.visual_overlays_button.setMenu(overlays_menu)
+        control_layout.addWidget(self.visual_overlays_button)
         
-        self.offside_checkbox = QCheckBox("Offside")
-        self.offside_checkbox.setChecked(True)
-        control_layout.addWidget(self.offside_checkbox)
-        
+        self.orientation_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
+        self.offside_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
+        self.pressure_zone_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
+
         # Info label
         self.info_label = QLabel("")
         self.info_label.setAlignment(Qt.AlignCenter)
@@ -398,6 +440,8 @@ class MainWindow(QWidget):
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
+
+
 
 
 
@@ -589,11 +633,20 @@ class MainWindow(QWidget):
         possession_team = PossessionTracker.get_possession_for_frame(possession, half, idx)
         offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, 
                                     home_ids, away_ids, teams_df, last_positions)
-        self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_checkbox.isChecked())
-        
+        self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_action.isChecked())
+        # Pressing zone
+        self.pitch_widget.draw_pressure_zone_for_ball_carrier(xy_objects, home_ids,
+                                        away_ids, dsam, player_orientations, half, idx, ball_xy,
+                                        compute_dynamic_pressing, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
+                                        visible=self.pressure_zone_action.isChecked()
+        )
+
+    
         # Info
         match_time = format_match_time(frame_number, n_frames_firstHalf, 
                                     n_frames_secondHalf, 0, 0, fps=FPS)
+        
+
         self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
 
     def _draw_players(self, half, idx):
@@ -613,7 +666,7 @@ class MainWindow(QWidget):
                             number=num,
                             angle=player_orientations[pid][self.timeline_widget.value()],
                             velocity=dsam[side][pid][half]['S'][idx],
-                            display_orientation=self.orientation_checkbox.isChecked(),
+                            display_orientation=self.orientation_action.isChecked(),
                             z_offset=(10 if side == "Home" else 50) + i
                         )
                 except IndexError:
