@@ -1,4 +1,4 @@
-# pitch_widget
+# pitch.py
 import numpy as np
 import math
 from PyQt5.QtWidgets import (
@@ -21,6 +21,8 @@ class PitchWidget(QWidget):
         self.Y_MAX = Y_MAX
         self.PITCH_LENGTH = X_MAX - X_MIN
         self.PITCH_WIDTH = Y_MAX - Y_MIN
+        self.theme = {}
+
 
         self.pitch_items = []         # Objets statiques du terrain
         self.dynamic_items = []       # Objets dynamiques (joueurs, balles, lignes, etc)
@@ -54,96 +56,166 @@ class PitchWidget(QWidget):
 
         
     def draw_pitch(self):
+        """Dessine le terrain en utilisant uniquement les clés du thème compatibles : terrain + line."""
         self.clear_pitch()
-        # Herbe autour du terrain
-        X_MIN = self.X_MIN
-        X_MAX = self.X_MAX
-        Y_MIN = self.Y_MIN
-        Y_MAX = self.Y_MAX
-        PITCH_LENGTH = self.PITCH_LENGTH
-        PITCH_WIDTH = self.PITCH_WIDTH
+        # Récupère les couleurs du thème (fallback si clé absente)
+        grass_color = self.theme.get("grass", "#08711a")
+        line_color    = self.theme.get("line",    "#FFFFFF")
+
+        brush = QBrush(QColor(grass_color))
+        pen   = QPen(QColor(line_color), LINE_WIDTH)
+
+        ### Herbe + terrain principal
         grass = QGraphicsRectItem(
-            X_MIN - 2*SCENE_EXTRA_GRASS, Y_MIN - SCENE_EXTRA_GRASS,
-            PITCH_LENGTH + 4*SCENE_EXTRA_GRASS, PITCH_WIDTH + 2*SCENE_EXTRA_GRASS
+            self.X_MIN - 2*SCENE_EXTRA_GRASS,
+            self.Y_MIN - SCENE_EXTRA_GRASS,
+            self.PITCH_LENGTH + 4*SCENE_EXTRA_GRASS,
+            self.PITCH_WIDTH  + 2*SCENE_EXTRA_GRASS
         )
-        grass.setBrush(QBrush(QColor("#1b5e20")))
+        grass.setBrush(brush)
         grass.setPen(QPen(Qt.NoPen))
         self.scene.addItem(grass)
         self.pitch_items.append(grass)
 
-        # Terrain principal
         field = self.scene.addRect(
-            X_MIN, Y_MIN, PITCH_LENGTH, PITCH_WIDTH,
-            QPen(Qt.white, LINE_WIDTH), QBrush(QColor("#08711a"))
+            self.X_MIN, self.Y_MIN, self.PITCH_LENGTH, self.PITCH_WIDTH,
+            pen, brush
         )
         field.setZValue(-10)
         self.pitch_items.append(field)
 
-        # Lignes du terrain
-        self.pitch_items.append(self.scene.addLine(X_MIN, Y_MIN, X_MIN, Y_MAX, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addLine(X_MAX, Y_MIN, X_MAX, Y_MAX, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addLine(X_MIN, Y_MIN, X_MAX, Y_MIN, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addLine(X_MIN, Y_MAX, X_MAX, Y_MAX, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addLine(X_MIN + PITCH_LENGTH/2, Y_MIN, X_MIN + PITCH_LENGTH/2, Y_MAX, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addEllipse(
-            (X_MIN + PITCH_LENGTH/2) - CENTER_CIRCLE_RADIUS, (Y_MIN + PITCH_WIDTH/2) - CENTER_CIRCLE_RADIUS,
-            CENTER_CIRCLE_RADIUS*2, CENTER_CIRCLE_RADIUS*2, QPen(Qt.white, LINE_WIDTH)
+        ### Lignes externe / médiane
+        self.pitch_items.append(self.scene.addLine(self.X_MIN, self.Y_MIN, self.X_MIN, self.Y_MAX, pen))
+        self.pitch_items.append(self.scene.addLine(self.X_MAX, self.Y_MIN, self.X_MAX, self.Y_MAX, pen))
+        self.pitch_items.append(self.scene.addLine(self.X_MIN, self.Y_MIN, self.X_MAX, self.Y_MIN, pen))
+        self.pitch_items.append(self.scene.addLine(self.X_MIN, self.Y_MAX, self.X_MAX, self.Y_MAX, pen))
+        self.pitch_items.append(self.scene.addLine(
+            self.X_MIN + self.PITCH_LENGTH/2, self.Y_MIN,
+            self.X_MIN + self.PITCH_LENGTH/2, self.Y_MAX,
+            pen
         ))
-        # Point central
-        self.pitch_items.append(self.scene.addEllipse(
-            (X_MIN + PITCH_LENGTH/2) - POINT_RADIUS,
-            (Y_MIN + PITCH_WIDTH/2) - POINT_RADIUS,
-            POINT_RADIUS*2, POINT_RADIUS*2,
-            QPen(Qt.NoPen), QBrush(Qt.white)
-        ))
-        # Points de penalty
-        self.pitch_items.append(self.scene.addEllipse(X_MIN+PENALTY_SPOT_DIST-POINT_RADIUS, Y_MIN+PITCH_WIDTH/2-POINT_RADIUS, POINT_RADIUS*2, POINT_RADIUS*2, QPen(Qt.NoPen), QBrush(Qt.white)))
-        self.pitch_items.append(self.scene.addEllipse(X_MAX-PENALTY_SPOT_DIST-POINT_RADIUS, Y_MIN+PITCH_WIDTH/2-POINT_RADIUS, POINT_RADIUS*2, POINT_RADIUS*2, QPen(Qt.NoPen), QBrush(Qt.white)))
-        # Surfaces
-        self.pitch_items.append(self.scene.addRect(X_MIN, Y_MIN + (PITCH_WIDTH-PENALTY_AREA_WIDTH)/2, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addRect(X_MAX-PENALTY_AREA_LENGTH, Y_MIN + (PITCH_WIDTH-PENALTY_AREA_WIDTH)/2, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addRect(X_MIN, Y_MIN + (PITCH_WIDTH-GOAL_AREA_WIDTH)/2, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addRect(X_MAX-GOAL_AREA_LENGTH, Y_MIN + (PITCH_WIDTH-GOAL_AREA_WIDTH)/2, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, QPen(Qt.white, LINE_WIDTH)))
-        
-        # Buts
-        self.pitch_items.append(self.scene.addRect(X_MIN - GOAL_DEPTH, Y_MIN + (PITCH_WIDTH-GOAL_WIDTH)/2, GOAL_DEPTH, GOAL_WIDTH, QPen(Qt.white, LINE_WIDTH)))
-        self.pitch_items.append(self.scene.addRect(X_MAX, Y_MIN + (PITCH_WIDTH-GOAL_WIDTH)/2, GOAL_DEPTH, GOAL_WIDTH, QPen(Qt.white, LINE_WIDTH)))
 
-        # Arcs de penalty
+        ### Cercle central
+        center_x = self.X_MIN + self.PITCH_LENGTH/2
+        center_y = self.Y_MIN + self.PITCH_WIDTH/2
+        self.pitch_items.append(self.scene.addEllipse(
+            center_x - CENTER_CIRCLE_RADIUS,
+            center_y - CENTER_CIRCLE_RADIUS,
+            CENTER_CIRCLE_RADIUS*2, CENTER_CIRCLE_RADIUS*2,
+            pen
+        ))
+
+        ### Point central
+        dot = self.scene.addEllipse(
+            center_x - POINT_RADIUS,
+            center_y - POINT_RADIUS,
+            POINT_RADIUS*2, POINT_RADIUS*2,
+            QPen(Qt.NoPen), QBrush(QColor(line_color))
+        )
+        self.pitch_items.append(dot)
+
+        ### Points de penalty
+        left_spot = self.scene.addEllipse(
+            self.X_MIN + PENALTY_SPOT_DIST - POINT_RADIUS,
+            center_y - POINT_RADIUS,
+            POINT_RADIUS*2, POINT_RADIUS*2,
+            QPen(Qt.NoPen), QBrush(QColor(line_color))
+        )
+        right_spot = self.scene.addEllipse(
+            self.X_MAX - PENALTY_SPOT_DIST - POINT_RADIUS,
+            center_y - POINT_RADIUS,
+            POINT_RADIUS*2, POINT_RADIUS*2,
+            QPen(Qt.NoPen), QBrush(QColor(line_color))
+        )
+        self.pitch_items.extend([left_spot, right_spot])
+
+        ### Surfaces de penalty et but
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MIN,
+            self.Y_MIN + (self.PITCH_WIDTH - PENALTY_AREA_WIDTH)/2,
+            PENALTY_AREA_LENGTH,
+            PENALTY_AREA_WIDTH,
+            pen
+        ))
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MAX - PENALTY_AREA_LENGTH,
+            self.Y_MIN + (self.PITCH_WIDTH - PENALTY_AREA_WIDTH)/2,
+            PENALTY_AREA_LENGTH,
+            PENALTY_AREA_WIDTH,
+            pen
+        ))
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MIN,
+            self.Y_MIN + (self.PITCH_WIDTH - GOAL_AREA_WIDTH)/2,
+            GOAL_AREA_LENGTH,
+            GOAL_AREA_WIDTH,
+            pen
+        ))
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MAX - GOAL_AREA_LENGTH,
+            self.Y_MIN + (self.PITCH_WIDTH - GOAL_AREA_WIDTH)/2,
+            GOAL_AREA_LENGTH,
+            GOAL_AREA_WIDTH,
+            pen
+        ))
+
+        ### Buts
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MIN - GOAL_DEPTH,
+            self.Y_MIN + (self.PITCH_WIDTH - GOAL_WIDTH)/2,
+            GOAL_DEPTH, GOAL_WIDTH,
+            pen
+        ))
+        self.pitch_items.append(self.scene.addRect(
+            self.X_MAX,
+            self.Y_MIN + (self.PITCH_WIDTH - GOAL_WIDTH)/2,
+            GOAL_DEPTH, GOAL_WIDTH,
+            pen
+        ))
+
+        ### Arcs de penalty
         arc_radius = 9.15
+
         # Arc gauche
-        arc_center_left = (X_MIN + PENALTY_SPOT_DIST, Y_MIN + PITCH_WIDTH / 2)
         left_arc = QGraphicsPathItem()
-        path_left = QPainterPath()
-        path_left.arcMoveTo(
-            arc_center_left[0] - arc_radius, arc_center_left[1] - arc_radius,
-            2 * arc_radius, 2 * arc_radius, 308
+        path_l = QPainterPath()
+        path_l.arcMoveTo(
+            self.X_MIN + PENALTY_SPOT_DIST - arc_radius,
+            center_y           - arc_radius,
+            2*arc_radius, 2*arc_radius,
+            308
         )
-        path_left.arcTo(
-            arc_center_left[0] - arc_radius, arc_center_left[1] - arc_radius,
-            2 * arc_radius, 2 * arc_radius, 308, 104
+        path_l.arcTo(
+            self.X_MIN + PENALTY_SPOT_DIST - arc_radius,
+            center_y           - arc_radius,
+            2*arc_radius, 2*arc_radius,
+            308, 104
         )
-        left_arc.setPath(path_left)
-        left_arc.setPen(QPen(Qt.white, LINE_WIDTH))
+        left_arc.setPath(path_l)
+        left_arc.setPen(pen)
         self.scene.addItem(left_arc)
         self.pitch_items.append(left_arc)
 
         # Arc droit
-        arc_center_right = (X_MAX - PENALTY_SPOT_DIST, Y_MIN + PITCH_WIDTH / 2)
         right_arc = QGraphicsPathItem()
-        path_right = QPainterPath()
-        path_right.arcMoveTo(
-            arc_center_right[0] - arc_radius, arc_center_right[1] - arc_radius,
-            2 * arc_radius, 2 * arc_radius, 128
+        path_r = QPainterPath()
+        path_r.arcMoveTo(
+            self.X_MAX - PENALTY_SPOT_DIST - arc_radius,
+            center_y           - arc_radius,
+            2*arc_radius, 2*arc_radius,
+            128
         )
-        path_right.arcTo(
-            arc_center_right[0] - arc_radius, arc_center_right[1] - arc_radius,
-            2 * arc_radius, 2 * arc_radius, 128, 104
+        path_r.arcTo(
+            self.X_MAX - PENALTY_SPOT_DIST - arc_radius,
+            center_y           - arc_radius,
+            2*arc_radius, 2*arc_radius,
+            128, 104
         )
-        right_arc.setPath(path_right)
-        right_arc.setPen(QPen(Qt.white, LINE_WIDTH))
+        right_arc.setPath(path_r)
+        right_arc.setPen(pen)
         self.scene.addItem(right_arc)
         self.pitch_items.append(right_arc)
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -168,7 +240,7 @@ class PitchWidget(QWidget):
             arrow_x_end = x + (PLAYER_OUTER_RADIUS + arrow_length) * math.cos(angle)
             arrow_y_end = y + (PLAYER_OUTER_RADIUS + arrow_length) * math.sin(angle)
             arrow = self.scene.addLine(
-                arrow_x_start, arrow_y_start, arrow_x_end, arrow_y_end, QPen(QColor("black"), PLAYER_ARROW_THICKNESS)
+                arrow_x_start, arrow_y_start, arrow_x_end, arrow_y_end, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS)
             )
             arrow.setZValue(z_offset - 2)
             self.dynamic_items.append(arrow)
@@ -179,8 +251,8 @@ class PitchWidget(QWidget):
             left_y = arrow_y_end + chevron_size * math.sin(left_chevron_angle)
             right_x = arrow_x_end + chevron_size * math.cos(right_chevron_angle)
             right_y = arrow_y_end + chevron_size * math.sin(right_chevron_angle)
-            left_line = self.scene.addLine(arrow_x_end, arrow_y_end, left_x, left_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS))
-            right_line = self.scene.addLine(arrow_x_end, arrow_y_end, right_x, right_y, QPen(QColor("black"), PLAYER_ARROW_THICKNESS))
+            left_line = self.scene.addLine(arrow_x_end, arrow_y_end, left_x, left_y, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS))
+            right_line = self.scene.addLine(arrow_x_end, arrow_y_end, right_x, right_y, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS))
             left_line.setZValue(z_offset - 2)
             right_line.setZValue(z_offset - 2)
             self.dynamic_items.append(left_line)
@@ -246,11 +318,11 @@ class PitchWidget(QWidget):
         return ball
 
 
-    def draw_offside_line(self, x_offside, color="#FF40FF", visible=True):
+    def draw_offside_line(self, x_offside, visible=True):
         if not visible:
             return None
         if visible and x_offside is not None:
-            pen = QPen(QColor(color), OFFSIDE_LINE_WIDTH)
+            pen = QPen(QColor(self.theme["offside"]), OFFSIDE_LINE_WIDTH)
             pen.setStyle(Qt.DotLine)
             line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX+1, pen)
             line.setZValue(199)

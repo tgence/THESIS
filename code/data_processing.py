@@ -475,7 +475,7 @@ def get_pressure_color(pressure):
 
 
 
-def compute_dynamic_pressing(
+def compute_pressure(
     ball_xy,              # tuple (x, y) de la balle à la frame considérée
     carrier_pid,          # id du porteur de balle à la frame considérée
     carrier_side,         # "Home" ou "Away", camp du porteur

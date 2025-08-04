@@ -12,16 +12,17 @@ from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize, QRectF
 from PyQt5.QtGui import QColor, QIcon, QFont
 
 # Imports locaux
-from pitch_widget import PitchWidget
-from annotation_tools import ArrowAnnotationManager
+from pitch import PitchWidget
+from annotation import ArrowAnnotationManager
 from arrow_context_menu import ArrowContextMenu
-from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events, format_match_time, compute_dynamic_pressing
-from trajectory_manager import TrajectoryManager
+from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events, format_match_time, compute_pressure
+from trajectory import TrajectoryManager
 from ui_components import ActionFilterBar, MatchActionsDialog, create_nav_button
-from frame_utils import FrameManager, PossessionTracker
-from custom_slider import TimelineWidget
+from utils.frame_utils import FrameManager, PossessionTracker
+from slider import TimelineWidget
 from score_manager import ScoreManager
 from tactical_simulation import TacticalSimulationManager
+from theme_manager import ThemeManager, majority_light
 from camera.camera_manager import CameraManager  
 from camera.camera_controls import CameraControlWidget
 from config import *
@@ -119,6 +120,9 @@ class MainWindow(QWidget):
         self.trajectory_manager = None  # Initialisé après pitch_widget
         self.annotation_manager = None
         self.tactical_manager = None  # Gestionnaire de simulation tactique
+        self.theme_mgr = ThemeManager(use_petroff=True,
+                                      cr_target=3.0,
+                                      de_min=20.0)
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
         self.camera_manager = None  # Initialisé après pitch_widget
         
@@ -140,6 +144,7 @@ class MainWindow(QWidget):
         self._setup_ui()
         self._setup_managers()
         self._connect_signals()
+        self.on_theme_mode_changed(self.theme_combo.currentText())
 
 
         self.update_scene(0)
@@ -164,9 +169,21 @@ class MainWindow(QWidget):
         self.score_label = QLabel()
         self.score_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self._update_score_display(0)
-        
         score_layout.addWidget(self.score_label)
         score_layout.addStretch()
+
+        # === AJOUTE LE BOUTON THEME DANS LA BARRE DE SCORE ===
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["CLASSIC", "BLACK & WHITE"])
+        self.theme_combo.setCurrentText("CLASSIC")
+        self.theme_combo.setFixedWidth(160)
+        self.theme_combo.currentTextChanged.connect(self.on_theme_mode_changed)
+
+        score_layout.addWidget(self.score_label)
+        score_layout.addStretch()
+        score_layout.addWidget(QLabel("Theme:"))
+        score_layout.addWidget(self.theme_combo)
+
         
         left_panel.addLayout(score_layout)
         
@@ -191,55 +208,22 @@ class MainWindow(QWidget):
     def _update_score_display(self, frame):
         """Met à jour l'affichage du score"""
         home_score, away_score = self.score_manager.get_score_at_frame(frame)
-        
-        # Récupérer les couleurs des équipes
-        home_color = "#333333"
-        away_color = "#333333"
-        
-        if home_ids and home_ids[0] in home_colors:
-            home_color = home_colors[home_ids[0]][0]
-        
-        if away_ids and away_ids[0] in away_colors:
-            away_color = away_colors[away_ids[0]][0]
-        
-        # Logique d'adaptation du fond
-        def is_light_color(hex_color):
-            if not hex_color.startswith('#'):
-                hex_color = '#' + hex_color
-            r = int(hex_color[1:3], 16)
-            g = int(hex_color[3:5], 16) 
-            b = int(hex_color[5:7], 16)
-            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-            return luminance > 0.7
-        
-        def is_dark_color(hex_color):
-            if not hex_color.startswith('#'):
-                hex_color = '#' + hex_color
-            r = int(hex_color[1:3], 16)
-            g = int(hex_color[3:5], 16) 
-            b = int(hex_color[5:7], 16)
-            luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-            return luminance < 0.3
-        
-        home_is_white = is_light_color(home_color)
-        away_is_white = is_light_color(away_color)
-        home_is_black = is_dark_color(home_color)
-        away_is_black = is_dark_color(away_color)
-        
-        if home_is_white or away_is_white:
+        home_main_color = home_colors[home_ids[0]][0]
+        away_main_color = away_colors[away_ids[0]][0]
+        home_sec_color = home_colors[home_ids[0]][1]
+        away_sec_color = away_colors[away_ids[0]][1]
+        all_colors = [home_main_color, away_main_color, home_sec_color, away_sec_color]
+        if majority_light(all_colors):
             background_color = "#000000"
             score_color = "#ffffff"
-        elif home_is_black or away_is_black:
-            background_color = "#ffffff" 
-            score_color = "#000000"
         else:
             background_color = "#ffffff"
             score_color = "#000000"
         
         score_html = f"""
-        <span style="color: {home_color}; font-weight: bold;">{home_team_name}</span>
+        <span style="color: {home_main_color}; font-weight: bold;">{home_team_name}</span>
         <span style="color: {score_color}; font-weight: bold;"> {home_score} - {away_score} </span>
-        <span style="color: {away_color}; font-weight: bold;">{away_team_name}</span>
+        <span style="color: {away_main_color}; font-weight: bold;">{away_team_name}</span>
         """
         
         self.score_label.setStyleSheet(f"""
@@ -271,6 +255,7 @@ class MainWindow(QWidget):
         nav_layout.addWidget(create_nav_button("1m >", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, 60 * FPS, "Forward 1 minute", self.jump_frames))
 
         control_layout.addLayout(nav_layout)
+
 
         # Speed control
         self.speed_box = QComboBox()
@@ -637,7 +622,7 @@ class MainWindow(QWidget):
         # Pressing zone
         self.pitch_widget.draw_pressure_zone_for_ball_carrier(xy_objects, home_ids,
                                         away_ids, dsam, player_orientations, half, idx, ball_xy,
-                                        compute_dynamic_pressing, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
+                                        compute_pressure, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
                                         visible=self.pressure_zone_action.isChecked()
         )
 
@@ -909,6 +894,16 @@ class MainWindow(QWidget):
             # Le menu se fermera automatiquement
             pass
     
+    def on_theme_mode_changed(self, new_mode: str):
+        # Récupère les couleurs principales ET secondaires
+        home_main = home_colors[home_ids[0]][0] if home_ids and home_ids[0] in home_colors else "#FFFFFF"
+        home_sec  = home_colors[home_ids[0]][1] if home_ids and home_ids[0] in home_colors and len(home_colors[home_ids[0]]) > 1 else "#CCCCCC"
+        away_main = away_colors[away_ids[0]][0] if away_ids and away_ids[0] in away_colors else "#000000"
+        away_sec  = away_colors[away_ids[0]][1] if away_ids and away_ids[0] in away_colors and len(away_colors[away_ids[0]]) > 1 else "#444444"
+        self.current_theme = self.theme_mgr.generate(new_mode, home_main, away_main, home_sec, away_sec)
+        self.pitch_widget.theme = self.current_theme
+        current = self.timeline_widget.value()
+        self.update_scene(current)
 
 
 

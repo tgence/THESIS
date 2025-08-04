@@ -1,4 +1,4 @@
-# custom_slider.py
+# slider.py
 
 from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
 from PyQt5.QtCore import Qt, QEvent, pyqtSignal, QRect, QTimer

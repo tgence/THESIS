@@ -1,4 +1,4 @@
-# trajectory_manager.py - Version améliorée avec trajectoires simulées
+# trajectory.py - Version améliorée avec trajectoires simulées
 
 from PyQt5.QtGui import QPen, QColor, QBrush
 from PyQt5.QtCore import Qt
