@@ -1,8 +1,15 @@
 # theme_manager.py
 from typing import Dict
 from utils.color_utils import hex_to_lab, contrast_ratio, delta_e_lab, hex_to_lch, lch_to_hex
+from config import BALL_COLOR
 
 FALLBACK = ["#08711a", "#E4E4E4", "#FF40FF", "#000000"]
+CLASSIC_GRASS = "#08711a"
+CLASSIC_LINE = "#E4E4E4"
+BW_GRASS_IF_LIGHT = "#292929"
+BW_GRASS_IF_DARK = "#E4E4E4"
+BW_LINE_IF_LIGHT = "#E4E4E4"
+BW_LINE_IF_DARK = "#292929"
 
 def is_light(hexcolor):
     r, g, b = int(hexcolor[1:3],16), int(hexcolor[3:5],16), int(hexcolor[5:7],16)
@@ -27,12 +34,13 @@ class ThemeManager:
         home_sec = "#" + home_sec.lstrip("#")
         away_sec = "#" + away_sec.lstrip("#")
         all_teams = [home, away, home_sec, away_sec]
+        ball = BALL_COLOR
 
         # === CLASSIC ===
         if mode.upper() == "CLASSIC":
-            grass = "#08711a"
-            line  = "#E4E4E4"
-            forbidden = [grass, line] + all_teams
+            grass = CLASSIC_GRASS
+            line  = CLASSIC_LINE
+            forbidden = [grass, line, ball] + all_teams
             offside = self._find_distinct_color(forbidden)
             arrow   = self._find_distinct_color(forbidden + [offside])
             return {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
@@ -41,12 +49,12 @@ class ThemeManager:
         if mode.upper() == "BLACK & WHITE":
             # 1. Évalue luminosité des 4 couleurs d'équipe
             if majority_light(all_teams):
-                grass = "#292929"
-                line = "#E4E4E4"
+                grass = BW_GRASS_IF_LIGHT
+                line = BW_LINE_IF_LIGHT
             else:
-                grass = "#E4E4E4"
-                line = "#292929"
-            forbidden = [grass, line] + all_teams
+                grass = BW_GRASS_IF_DARK
+                line = BW_LINE_IF_DARK
+            forbidden = [grass, line, ball] + all_teams
             # Génère des candidats bien différents pour offside/arrow (roue chromatique)
             offside = self._find_distinct_color(forbidden, chroma=80, luminance=80)
             arrow = self._find_distinct_color(forbidden + [offside], chroma=80, luminance=50)
@@ -55,7 +63,7 @@ class ThemeManager:
         # Sécurité: fallback si aucun mode reconnu
         return self.fallback()
 
-    def _find_distinct_color(self, reference_colors, chroma=75, luminance=75, threshold=35):
+    def _find_distinct_color(self, reference_colors, chroma=45, luminance=60, threshold=35):
         forbidden_labs = [hex_to_lab(c) for c in reference_colors]
         best = None
         best_min_dist = -1
@@ -64,13 +72,12 @@ class ThemeManager:
             candidates = [lch_to_hex(luminance, chroma, h) for h in range(0, 360, step)]
             candidates = [c for c in candidates if c]
             scored_candidates = []
-
             for c in candidates:
                 c_lab = hex_to_lab(c)
                 min_dist = min([delta_e_lab(c_lab, ref_lab) for ref_lab in forbidden_labs])
                 scored_candidates.append((min_dist, c))
 
-            # On retient les couleurs qui dépassent le seuil
+    
             ok = [(d, c) for d, c in scored_candidates if d > threshold]
             if ok:
                 # Choisir la couleur dont le min_dist est le plus grand (donc la plus sûre)

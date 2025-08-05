@@ -319,7 +319,7 @@ class TacticalSimulationManager:
         
         return closest_player
     
-    def find_player_at_position(self, click_pos, current_frame, xy_objects, get_frame_data_func, max_distance=PLAYER_OUTER_RADIUS):
+    def find_player_at_position(self, click_pos, current_frame, xy_objects, get_frame_data_func, max_distance=PLAYER_OUTER_RADIUS_BASE):
         """Trouve le joueur le plus proche d'une position de clic"""
         min_distance = float('inf')
         closest_player = None

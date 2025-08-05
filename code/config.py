@@ -3,16 +3,16 @@
 from PyQt5.QtCore import Qt
 import os
 
-# --- CONFIGURATION: Always use relative paths ---
+# Paths / Loading
 CODE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CODE_DIR)
 SVG_DIR = os.path.join(PROJECT_ROOT, "svgs/")
 DATA_PATH = os.path.join(PROJECT_ROOT, "data/")
 
-MATCH_ID = "J03WN1"
-FILE_NAME_POS = f"DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
-FILE_NAME_INFOS = f"DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
-FILE_NAME_EVENTS = f"DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+MATCH_ID = "J03WPY"
+FILE_NAME_POS = f"DFL_04_03_positions_raw_observed_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_INFOS = f"DFL_02_01_matchinformation_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_EVENTS = f"DFL_03_02_events_raw_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
 
 # Panel size
 LEFT_PANEL_SIZE = 1200  
@@ -33,59 +33,130 @@ CENTER_CIRCLE_RADIUS = 9.15
 POINT_RADIUS = 0.5
 PENALTY_SPOT_DIST = 11
 
-# Offside
-
-OFFSIDE_LINE_WIDTH = 0.5
 
 
-# Player and ball
-PLAYER_OUTER_RADIUS = 1.6
-PLAYER_INNER_RADIUS = 3/4 * PLAYER_OUTER_RADIUS
-PLAYER_ARROW_THICKNESS = 1/4 * PLAYER_OUTER_RADIUS
-PLAYER_CHEVRON_SIZE = 1/2 * PLAYER_OUTER_RADIUS
+# ===== VALEURS DE BASE (non scalées) =====
+PLAYER_OUTER_RADIUS_BASE = 1.6  # Valeur de référence pour scale = 1.0
+
+# Ces valeurs sont maintenant des propriétés qui dépendront du scale
+class DynamicConfig:
+    """Classe pour gérer les valeurs de configuration dynamiques"""
+    
+    _instance = None
+    _scale = 1.0
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DynamicConfig, cls).__new__(cls)
+        return cls._instance
+    
+    @property
+    def scale(self):
+        return self._scale
+    
+    @scale.setter
+    def scale(self, value):
+        self._scale = max(0.5, min(2.0, value))
+    
+    @property
+    def PLAYER_OUTER_RADIUS(self):
+        return PLAYER_OUTER_RADIUS_BASE * self._scale
+    
+    @property
+    def PLAYER_INNER_RADIUS(self):
+        return 3/4 * self.PLAYER_OUTER_RADIUS
+    
+    @property
+    def PLAYER_ARROW_THICKNESS(self):
+        return 1/4 * self.PLAYER_OUTER_RADIUS
+    
+    @property
+    def PLAYER_CHEVRON_SIZE(self):
+        return 1/2 * self.PLAYER_OUTER_RADIUS
+    
+    @property
+    def BALL_RADIUS(self):
+        return 7/16 * self.PLAYER_OUTER_RADIUS
+    
+    @property
+    def TACTICAL_ARROW_DETECTION_RADIUS(self):
+        return self.PLAYER_OUTER_RADIUS
+    
+    @property
+    def TRAJECTORY_PLAYER_LINE_WIDTH(self):
+        return 3/16 * self.PLAYER_OUTER_RADIUS
+
+    @property
+    def TRAJECTORY_BALL_LINE_WIDTH(self):
+        return 5/16 * self.PLAYER_OUTER_RADIUS
+
+    @property
+    def OFFSIDE_LINE_WIDTH(self):
+        return 5/16 * self.PLAYER_OUTER_RADIUS
+
+# Instance globale
+CONFIG = DynamicConfig()
+
+# Pour la compatibilité avec le code existant, on crée des fonctions
+def get_player_outer_radius():
+    return CONFIG.PLAYER_OUTER_RADIUS
+
+def get_player_inner_radius():
+    return CONFIG.PLAYER_INNER_RADIUS
+
+def get_player_arrow_thickness():
+    return CONFIG.PLAYER_ARROW_THICKNESS
+
+def get_player_chevron_size():
+    return CONFIG.PLAYER_CHEVRON_SIZE
+
+def get_ball_radius():
+    return CONFIG.BALL_RADIUS
+
+def get_tactical_arrow_detection_radius():
+    return CONFIG.TACTICAL_ARROW_DETECTION_RADIUS
+
+def get_trajectory_player_line_width():
+    return CONFIG.TRAJECTORY_PLAYER_LINE_WIDTH
+
+def get_trajectory_ball_line_width():
+    return CONFIG.TRAJECTORY_BALL_LINE_WIDTH
+
+def get_offside_line_width():
+    return CONFIG.OFFSIDE_LINE_WIDTH
+
+# Valeurs statiques (ne changent pas avec le scale)
 PLAYER_ROTATION_OFFSET_DEG = 270
-PLAYER_ROTATION_DEFAULT_DEG = 90  # Pour regarder vers le haut
+PLAYER_ROTATION_DEFAULT_DEG = 90
 PLAYER_CHEVRON_ANGLE_DEG = 150
-BALL_RADIUS = 7/16 * PLAYER_OUTER_RADIUS
 VELOCITY_ARROW_SCALE = 1
-BALL_COLOR = "orange"
-
-
-
+BALL_COLOR = "#FFA500"
 
 # Annotation_tools constants
 ANNOTATION_ARROW_HEAD_LENGTH = 4
-ANNOTATION_ARROW_HEAD_ANGLE = 30  # in degrees
+ANNOTATION_ARROW_HEAD_ANGLE = 30
 ANNOTATION_ARROW_BASE_WIDTH_VALUE = 1
 ANNOTATION_ARROW_SCALE_RANGE = (ANNOTATION_ARROW_BASE_WIDTH_VALUE, ANNOTATION_ARROW_BASE_WIDTH_VALUE * 10)
-
 
 # ---- Timeline and UI ----
 MAX_TIMELINE_WIDTH = 550
 MIN_TIMELINE_WIDTH = 350
 EXTRA_TIMELINE_PADDING = 60
-TIMELINE_SLIDER_HEIGHT = 24    # Hauteur totale du widget slider
-TIMELINE_GROOVE_HEIGHT = TIMELINE_SLIDER_HEIGHT - TIMELINE_SLIDER_HEIGHT//3     # Epaisseur de la barre (très fin)
-TIMELINE_HANDLE_WIDTH = TIMELINE_GROOVE_HEIGHT // 2      # Largeur du curseur (horizontalement)
-TIMELINE_HANDLE_HEIGHT = TIMELINE_GROOVE_HEIGHT + TIMELINE_GROOVE_HEIGHT//2     # Epaisseur du curseur (verticalement, donc un rectangle "épais")
+TIMELINE_SLIDER_HEIGHT = 24
+TIMELINE_GROOVE_HEIGHT = TIMELINE_SLIDER_HEIGHT - TIMELINE_SLIDER_HEIGHT//3
+TIMELINE_HANDLE_WIDTH = TIMELINE_GROOVE_HEIGHT // 2
+TIMELINE_HANDLE_HEIGHT = TIMELINE_GROOVE_HEIGHT + TIMELINE_GROOVE_HEIGHT//2
 NAV_BUTTON_WIDTH = 35
 NAV_BUTTON_HEIGHT = 30
 
 # time
-FPS = 25               # Fréquence d’échantillonnage (frames per second)
-LENGTH_FIRST_HALF = 45 # Minutes
+FPS = 25
+LENGTH_FIRST_HALF = 45
 LENGTH_SECOND_HALF = 45
 LENGTH_OVERTIME_HALF = 15
 LENGTH_FULL_TIME = LENGTH_FIRST_HALF + LENGTH_SECOND_HALF
 LENGTH_EXTRA_TIME = 2 * LENGTH_OVERTIME_HALF
 
-
-
 # Players and ball trajectories
-TRAJECTORY_PLAYER_LINE_WIDTH = 0.3      # Traits très fins pour joueurs
-TRAJECTORY_BALL_LINE_WIDTH = 0.5        # Traits fins pour balle
-TRAJECTORY_STYLE = Qt.DotLine           # Pointillés
-TRAJECTORY_SAMPLE_RATE = 5              
-
-# Tactical simulation
-TACTICAL_ARROW_DETECTION_RADIUS = PLAYER_OUTER_RADIUS  # Distance max pour associer flèche-joueur
+TRAJECTORY_STYLE = Qt.DotLine
+TRAJECTORY_SAMPLE_RATE = 5

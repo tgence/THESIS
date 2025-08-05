@@ -6,7 +6,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton,
     QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup,
-    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton, QMenu, QAction
+    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton, QMenu, QAction, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize, QRectF
 from PyQt5.QtGui import QColor, QIcon, QFont
@@ -25,6 +25,7 @@ from tactical_simulation import TacticalSimulationManager
 from theme_manager import ThemeManager, majority_light
 from camera.camera_manager import CameraManager  
 from camera.camera_controls import CameraControlWidget
+from settings import SettingsManager, SettingsDialog
 from config import *
 
 from qt_material import apply_stylesheet
@@ -125,7 +126,10 @@ class MainWindow(QWidget):
                                       de_min=20.0)
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
         self.camera_manager = None  # Initialisé après pitch_widget
-        
+        self.settings_manager = SettingsManager()
+        self.settings_dialog = None
+        self._settings_signal_connection = None
+
         # Menu contextuel pour flèches
         self.arrow_context_menu = None
         
@@ -162,27 +166,40 @@ class MainWindow(QWidget):
         left_container = QWidget()
         left_container.setFixedWidth(LEFT_PANEL_SIZE)  # ← TAILLE FIXE (ajustez selon vos besoins)
         left_container.setLayout(left_panel)
-        # Zone de score en haut
+
         score_layout = QHBoxLayout()
-        
-        # Score display
+        score_layout.setSpacing(16)  # espace plus large pour lisibilité
+
+        # SCORE à gauche
         self.score_label = QLabel()
         self.score_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self._update_score_display(0)
-        score_layout.addWidget(self.score_label)
-        score_layout.addStretch()
+        self.score_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        score_layout.addWidget(self.score_label)  # priorité + large
 
-        # === AJOUTE LE BOUTON THEME DANS LA BARRE DE SCORE ===
+        # Spacer flexible (prend tout l’espace restant)
+        score_layout.addStretch(1)
+
+        # "Theme" (au centre/droite, mais avant settings)
+        theme_label = QLabel("Theme:")
+        score_layout.addWidget(theme_label, 0)
+
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["CLASSIC", "BLACK & WHITE"])
         self.theme_combo.setCurrentText("CLASSIC")
         self.theme_combo.setFixedWidth(160)
         self.theme_combo.currentTextChanged.connect(self.on_theme_mode_changed)
+        score_layout.addWidget(self.theme_combo, 0)
 
-        score_layout.addWidget(self.score_label)
-        score_layout.addStretch()
-        score_layout.addWidget(QLabel("Theme:"))
-        score_layout.addWidget(self.theme_combo)
+        # Encore un petit spacer pour respirer
+        score_layout.addSpacing(8)
+
+        # Bouton "Visual Settings" TOUT À DROITE
+        self.settings_button = QPushButton("Visual Settings")
+        self.settings_button.setToolTip("Visual Settings")
+        self.settings_button.clicked.connect(self._show_settings)
+        self.settings_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        score_layout.addWidget(self.settings_button, 0)
 
         
         left_panel.addLayout(score_layout)
@@ -232,13 +249,14 @@ class MainWindow(QWidget):
                 font-family: Arial;
                 font-weight: bold;
                 background: {background_color};
-                padding: 6px 12px;
+                padding: 6px 6px;
                 border-radius: 6px;
-                margin: 5px;
             }}
         """)
         
         self.score_label.setText(score_html)
+        self.score_label.adjustSize()
+
     
     def _create_timeline_controls(self, parent_layout):
         """Crée les contrôles de timeline"""
@@ -585,7 +603,7 @@ class MainWindow(QWidget):
                 
                 simulated_data = self.tactical_manager.get_simulated_trajectories()
                 self.trajectory_manager.draw_simulated_trajectories(
-                    simulated_data, frame_number, self.simulation_start_frame, self.simulation_end_frame
+                    simulated_data, frame_number, self.simulation_start_frame, self.simulation_end_frame, ball_color=self.settings_manager.ball_color
                 )
             else:
                 self.trajectory_manager.calculate_future_trajectories(
@@ -600,7 +618,8 @@ class MainWindow(QWidget):
                 self.trajectory_manager.draw_future_trajectories(
                     current_frame=frame_number,
                     loop_start=self.simulation_start_frame,
-                    loop_end=self.simulation_end_frame
+                    loop_end=self.simulation_end_frame, 
+                    ball_color=self.settings_manager.ball_color
                 )
         
         # Dessiner les joueurs
@@ -609,7 +628,7 @@ class MainWindow(QWidget):
         # Balle
         ball_xy = xy_objects[half]["Ball"].xy[idx]
         ball_x, ball_y = ball_xy[0], ball_xy[1]
-        self.pitch_widget.draw_ball(ball_x, ball_y)
+        self.pitch_widget.draw_ball(ball_x, ball_y, color=self.settings_manager.ball_color)
         
         # === NOUVEAU : Mettre à jour la position de la balle dans le gestionnaire de caméra ===
         self.camera_manager.update_ball_position(ball_x, ball_y)
@@ -618,13 +637,12 @@ class MainWindow(QWidget):
         possession_team = PossessionTracker.get_possession_for_frame(possession, half, idx)
         offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, 
                                     home_ids, away_ids, teams_df, last_positions)
-        self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_action.isChecked())
-        # Pressing zone
+        self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_action.isChecked(), color=self.settings_manager.offside_color)
         self.pitch_widget.draw_pressure_zone_for_ball_carrier(xy_objects, home_ids,
-                                        away_ids, dsam, player_orientations, half, idx, ball_xy,
-                                        compute_pressure, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
-                                        visible=self.pressure_zone_action.isChecked()
-        )
+                                                away_ids, dsam, player_orientations, half, idx, ball_xy,
+                                                compute_pressure, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
+                                                visible=self.pressure_zone_action.isChecked(),
+                )
 
     
         # Info
@@ -652,7 +670,8 @@ class MainWindow(QWidget):
                             angle=player_orientations[pid][self.timeline_widget.value()],
                             velocity=dsam[side][pid][half]['S'][idx],
                             display_orientation=self.orientation_action.isChecked(),
-                            z_offset=(10 if side == "Home" else 50) + i
+                            z_offset=(10 if side == "Home" else 50) + i,
+                            arrow_color=self.settings_manager.arrow_color
                         )
                 except IndexError:
                     continue
@@ -902,8 +921,44 @@ class MainWindow(QWidget):
         away_sec  = away_colors[away_ids[0]][1] if away_ids and away_ids[0] in away_colors and len(away_colors[away_ids[0]]) > 1 else "#444444"
         self.current_theme = self.theme_mgr.generate(new_mode, home_main, away_main, home_sec, away_sec)
         self.pitch_widget.theme = self.current_theme
+        self.settings_manager.reset_theme_colors(self.current_theme)
         current = self.timeline_widget.value()
         self.update_scene(current)
+        if self.settings_dialog is not None and self.settings_dialog.isVisible():
+            self.settings_dialog._load_current_settings()
+
+
+    def _show_settings(self):
+        """Affiche le dialog des paramètres"""
+        # Si la fenêtre existe encore et est visible, raise seulement
+        if self.settings_dialog is not None and self.settings_dialog.isVisible():
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            return
+
+        # Sinon, créer une nouvelle dialog
+        self.settings_dialog = SettingsDialog(self.settings_manager, self)
+        self.settings_dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        # Connecter le signal et garder une référence pour déconnexion
+        if self._settings_signal_connection is not None:
+            try:
+                self.settings_manager.settingsChanged.disconnect(self._settings_signal_connection)
+            except Exception:
+                pass
+        self._settings_signal_connection = lambda: self.update_scene(self.timeline_widget.value())
+        self.settings_manager.settingsChanged.connect(self._settings_signal_connection)
+        self.settings_dialog.destroyed.connect(self._on_settings_dialog_destroyed)
+        self.settings_dialog.show()
+
+    def _on_settings_dialog_destroyed(self):
+        # Déconnecter le slot
+        if self._settings_signal_connection is not None:
+            try:
+                self.settings_manager.settingsChanged.disconnect(self._settings_signal_connection)
+            except Exception:
+                pass
+            self._settings_signal_connection = None
+        self.settings_dialog = None
 
 
 

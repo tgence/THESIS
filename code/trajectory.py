@@ -80,7 +80,7 @@ class TrajectoryManager:
         self.cached_interval = interval_seconds
     
     def draw_future_trajectories(self, show_players=True, show_ball=True, current_frame=None, 
-                               loop_start=None, loop_end=None, interval_seconds=10.0):
+                               loop_start=None, loop_end=None, interval_seconds=10.0, ball_color=BALL_COLOR):
         """Dessine les trajectoires futures avec effacement progressif pendant la loop"""
         
         # Calculer les frames de fade basé sur l'intervalle choisi
@@ -119,7 +119,7 @@ class TrajectoryManager:
                             color.setAlphaF(final_alpha)
                             
                             # Ligne très fine et pointillée
-                            pen = QPen(color, TRAJECTORY_PLAYER_LINE_WIDTH)
+                            pen = QPen(color, CONFIG.TRAJECTORY_PLAYER_LINE_WIDTH)
                             pen.setStyle(Qt.CustomDashLine)
                             pen.setDashPattern([1, 4])
                             pen.setCapStyle(Qt.RoundCap)
@@ -142,7 +142,7 @@ class TrajectoryManager:
                         continue
                     
                     # Même logique inversée pour la balle
-                    color = QColor(BALL_COLOR)
+                    color = QColor(ball_color)
                     
                     if current_frame is not None:
                         frames_until_segment = frame1 - current_frame
@@ -157,7 +157,7 @@ class TrajectoryManager:
                     
                     color.setAlphaF(final_alpha)
                     
-                    pen = QPen(color, TRAJECTORY_BALL_LINE_WIDTH)
+                    pen = QPen(color, CONFIG.TRAJECTORY_BALL_LINE_WIDTH)
                     pen.setStyle(TRAJECTORY_STYLE)
                     pen.setCapStyle(Qt.RoundCap)
                     
@@ -172,8 +172,8 @@ class TrajectoryManager:
                     # Afficher tant que la position finale n'est pas atteinte
                     if current_frame is None or current_frame < final_frame:
                         # Rayon légèrement plus gros et cercle complet
-                        final_radius = BALL_RADIUS * 1.2  # 20% plus gros que la balle normale
-                        pen_color = QColor(BALL_COLOR)
+                        final_radius = CONFIG.BALL_RADIUS * 1.2  # 20% plus gros que la balle normale
+                        pen_color = QColor(ball_color)
                         pen_color.setAlphaF(1.0)  # TOUJOURS opaque à 1.0
                         
                         # Cercle complet (pas de pointillés) avec contour fin
@@ -186,7 +186,7 @@ class TrajectoryManager:
                         final_ball.setZValue(96)
                         self.pitch_widget.dynamic_items.append(final_ball)
 
-    def draw_simulated_trajectories(self, simulated_data, current_frame, loop_start, loop_end):
+    def draw_simulated_trajectories(self, simulated_data, current_frame, loop_start, loop_end, ball_color=BALL_COLOR):
         """Dessine les trajectoires simulées par-dessus les vraies trajectoires"""
         if not simulated_data:
             return
@@ -226,7 +226,7 @@ class TrajectoryManager:
                     color.setAlphaF(final_alpha)
                     
                     # Ligne plus épaisse et continue pour la simulation
-                    pen = QPen(color, TRAJECTORY_PLAYER_LINE_WIDTH * 2)
+                    pen = QPen(color, CONFIG.TRAJECTORY_PLAYER_LINE_WIDTH * 2)
                     pen.setStyle(Qt.SolidLine)
                     pen.setCapStyle(Qt.RoundCap)
                     
@@ -263,7 +263,7 @@ class TrajectoryManager:
                 color.setAlphaF(final_alpha)
                 
                 # Ligne plus épaisse pour la balle simulée
-                pen = QPen(color, TRAJECTORY_BALL_LINE_WIDTH * 2)
+                pen = QPen(color, CONFIG.TRAJECTORY_BALL_LINE_WIDTH * 2)
                 pen.setStyle(Qt.SolidLine)
                 pen.setCapStyle(Qt.RoundCap)
                 
@@ -276,8 +276,8 @@ class TrajectoryManager:
                 final_x, final_y, final_frame = ball_positions[-1]
                 
                 if current_frame is None or current_frame < final_frame:
-                    final_radius = BALL_RADIUS * 1.3
-                    pen_color = QColor(BALL_COLOR)
+                    final_radius = CONFIG.BALL_RADIUS * 1.3
+                    pen_color = QColor(ball_color)
                     pen_color.setAlphaF(1.0)
                     
                     # Cercle de destination final

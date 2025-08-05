@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
 from PyQt5.QtCore import Qt, QRectF
+from config import CONFIG
 
 
 from data_processing import get_pressure_color, build_ball_carrier_array
@@ -229,30 +230,46 @@ class PitchWidget(QWidget):
         self.view.setSceneRect(rect)
         self.view.fitInView(rect, Qt.KeepAspectRatio)
 
-    def draw_player(self, x, y, main_color, sec_color, num_color, number, angle=0, velocity=0, display_orientation=False, z_offset=10):
-        # Dessin d’un joueur avec orientation
+    def draw_player(self, x, y, main_color, sec_color, num_color, number, 
+                angle=0, velocity=0, display_orientation=False, z_offset=10, 
+                arrow_color=None):
+    
+        # Utiliser la couleur du thème si arrow_color n'est pas fourni
+        if arrow_color is None:
+            arrow_color = self.theme.get("arrow", "#000000")
+        
+        # Récupérer les dimensions depuis CONFIG (déjà scalées !)
+        radius = CONFIG.PLAYER_OUTER_RADIUS
+        inner_radius = CONFIG.PLAYER_INNER_RADIUS
+        arrow_thickness = CONFIG.PLAYER_ARROW_THICKNESS
+        chevron_size = CONFIG.PLAYER_CHEVRON_SIZE
+        
+        # Dessin d'un joueur avec orientation
         min_velocity = 0.01 # m/s to avoid display bugs
         if display_orientation and angle is not None and velocity is not None:
             velocity = max(velocity, min_velocity)
             arrow_length = velocity * VELOCITY_ARROW_SCALE
-            arrow_x_start = x + PLAYER_OUTER_RADIUS * math.cos(angle)
-            arrow_y_start = y + PLAYER_OUTER_RADIUS * math.sin(angle)
-            arrow_x_end = x + (PLAYER_OUTER_RADIUS + arrow_length) * math.cos(angle)
-            arrow_y_end = y + (PLAYER_OUTER_RADIUS + arrow_length) * math.sin(angle)
+            arrow_x_start = x + radius * math.cos(angle)
+            arrow_y_start = y + radius * math.sin(angle)
+            arrow_x_end = x + (radius + arrow_length) * math.cos(angle)
+            arrow_y_end = y + (radius + arrow_length) * math.sin(angle)
             arrow = self.scene.addLine(
-                arrow_x_start, arrow_y_start, arrow_x_end, arrow_y_end, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS)
+                arrow_x_start, arrow_y_start, arrow_x_end, arrow_y_end, 
+                QPen(QColor(arrow_color), arrow_thickness)
             )
             arrow.setZValue(z_offset - 2)
             self.dynamic_items.append(arrow)
-            chevron_size = PLAYER_CHEVRON_SIZE
+            
             left_chevron_angle = angle + math.radians(PLAYER_CHEVRON_ANGLE_DEG)
             right_chevron_angle = angle - math.radians(PLAYER_CHEVRON_ANGLE_DEG)
             left_x = arrow_x_end + chevron_size * math.cos(left_chevron_angle)
             left_y = arrow_y_end + chevron_size * math.sin(left_chevron_angle)
             right_x = arrow_x_end + chevron_size * math.cos(right_chevron_angle)
             right_y = arrow_y_end + chevron_size * math.sin(right_chevron_angle)
-            left_line = self.scene.addLine(arrow_x_end, arrow_y_end, left_x, left_y, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS))
-            right_line = self.scene.addLine(arrow_x_end, arrow_y_end, right_x, right_y, QPen(QColor(self.theme["arrow"]), PLAYER_ARROW_THICKNESS))
+            left_line = self.scene.addLine(arrow_x_end, arrow_y_end, left_x, left_y, 
+                                        QPen(QColor(arrow_color), arrow_thickness))
+            right_line = self.scene.addLine(arrow_x_end, arrow_y_end, right_x, right_y, 
+                                        QPen(QColor(arrow_color), arrow_thickness))
             left_line.setZValue(z_offset - 2)
             right_line.setZValue(z_offset - 2)
             self.dynamic_items.append(left_line)
@@ -260,10 +277,10 @@ class PitchWidget(QWidget):
 
         group = QGraphicsItemGroup()
         path_bottom = QPainterPath()
-        cx, cy, r = 0, 0, PLAYER_OUTER_RADIUS
+        cx, cy = 0, 0
         path_bottom.moveTo(cx, cy)
-        path_bottom.arcMoveTo(cx - r, cy - r, 2*r, 2*r, 0)
-        path_bottom.arcTo(cx - r, cy - r, 2*r, 2*r, 0, 180)
+        path_bottom.arcMoveTo(cx - radius, cy - radius, 2*radius, 2*radius, 0)
+        path_bottom.arcTo(cx - radius, cy - radius, 2*radius, 2*radius, 0, 180)
         path_bottom.lineTo(cx, cy)
         path_bottom.closeSubpath()
         bottom_half = QGraphicsPathItem(path_bottom)
@@ -271,10 +288,11 @@ class PitchWidget(QWidget):
         bottom_half.setBrush(QBrush(QColor(sec_color)))
         bottom_half.setZValue(z_offset + 1)
         group.addToGroup(bottom_half)
+        
         path_top = QPainterPath()
         path_top.moveTo(cx, cy)
-        path_top.arcMoveTo(cx - r, cy - r, 2*r, 2*r, 180)
-        path_top.arcTo(cx - r, cy - r, 2*r, 2*r, 180, 180)
+        path_top.arcMoveTo(cx - radius, cy - radius, 2*radius, 2*radius, 180)
+        path_top.arcTo(cx - radius, cy - radius, 2*radius, 2*radius, 180, 180)
         path_top.lineTo(cx, cy)
         path_top.closeSubpath()
         top_half = QGraphicsPathItem(path_top)
@@ -282,14 +300,17 @@ class PitchWidget(QWidget):
         top_half.setBrush(QBrush(QColor(main_color)))
         top_half.setZValue(z_offset + 2)
         group.addToGroup(top_half)
-        inner = QGraphicsEllipseItem(-PLAYER_INNER_RADIUS, -PLAYER_INNER_RADIUS, PLAYER_INNER_RADIUS*2, PLAYER_INNER_RADIUS*2)
+        
+        inner = QGraphicsEllipseItem(-inner_radius, -inner_radius, inner_radius*2, inner_radius*2)
         inner.setPen(QPen(Qt.transparent, 0))
         inner.setBrush(QBrush(QColor(main_color)))
         inner.setZValue(z_offset + 3)
         group.addToGroup(inner)
+        
+        # Ajuster la taille de la police en fonction du scale
         font = QFont("Arial")
         font.setBold(True)
-        font.setPointSize(int(PLAYER_INNER_RADIUS*1.8))
+        font.setPointSize(int(inner_radius * 1.8))
         text = QGraphicsTextItem(str(number))
         text.setDefaultTextColor(QColor(num_color))
         text.setFont(font)
@@ -305,24 +326,34 @@ class PitchWidget(QWidget):
         group.setRotation(deg)
         group.setZValue(z_offset)
         self.scene.addItem(group)
-        self.dynamic_items.append(group)  # <- Ajoute le groupe aux éléments dynamiques
+        self.dynamic_items.append(group)
 
-    def draw_ball(self, x, y):
+
+    def draw_ball(self, x, y, color=None):
+        if color is None:
+            color = BALL_COLOR
+        
+        ball_radius = CONFIG.BALL_RADIUS
+        
         ball = self.scene.addEllipse(
-            x - BALL_RADIUS, y - BALL_RADIUS,
-            BALL_RADIUS * 2, BALL_RADIUS * 2,
-            QPen(Qt.darkYellow, 0.3), QBrush(QColor(BALL_COLOR))
+            x - ball_radius, y - ball_radius,
+            ball_radius * 2, ball_radius * 2,
+            QPen(QColor(color), 0.3), QBrush(QColor(color))
         )
         ball.setZValue(100)
         self.dynamic_items.append(ball)
         return ball
 
 
-    def draw_offside_line(self, x_offside, visible=True):
+    def draw_offside_line(self, x_offside, visible=True, color=None):
         if not visible:
             return None
+        
+        if color is None:
+            color = self.theme.get("offside", "#FF40FF")
+        
         if visible and x_offside is not None:
-            pen = QPen(QColor(self.theme["offside"]), OFFSIDE_LINE_WIDTH)
+            pen = QPen(QColor(color), CONFIG.OFFSIDE_LINE_WIDTH)
             pen.setStyle(Qt.DotLine)
             line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX+1, pen)
             line.setZValue(199)
@@ -330,15 +361,16 @@ class PitchWidget(QWidget):
             return line
 
 
-
-    def draw_pressure_zone(self, x, y, color, radius=PLAYER_OUTER_RADIUS**2, opacity=0.5):
+    def draw_pressure_zone(self, x, y, color, radius=None, opacity=0.5):
         """
         Dessine un cercle translucide pour représenter une "zone de pression".
         - x, y : coordonnées du centre (en mètres, comme tout le reste)
-        - radius : rayon en mètres
+        - radius : rayon en mètres (si None, utilise CONFIG.PLAYER_OUTER_RADIUS)
         - color : code couleur (hex ou rgba)
         - opacity : (float) 0-1
         """
+        if radius is None:
+            radius = CONFIG.PLAYER_OUTER_RADIUS * 2  # Zone plus large que le joueur
 
         ellipse = QGraphicsEllipseItem(
             x - radius, y - radius, 2*radius, 2*radius
@@ -346,8 +378,8 @@ class PitchWidget(QWidget):
         ellipse.setBrush(QBrush(QColor(color)))
         ellipse.setOpacity(opacity)
         ellipse.setPen(QPen(Qt.NoPen))
-        ellipse.setZValue(110)  # mettre au-dessus du terrain, sous les joueurs
-        self.scene.addItem(ellipse)   # <<< OBLIGATOIRE !!!
+        ellipse.setZValue(110)
+        self.scene.addItem(ellipse)
         self.dynamic_items.append(ellipse)
         return ellipse
         
