@@ -146,6 +146,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings_manager = settings_manager
         self.setWindowTitle("Visual Settings")
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.setModal(False)  # Non-modal pour voir les changements en temps réel
         self.setFixedSize(350, 400)
         

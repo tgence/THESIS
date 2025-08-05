@@ -1,4 +1,4 @@
-# ui_components.py
+# match_actions.py
 
 from PyQt5.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel, 

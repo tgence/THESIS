@@ -1,4 +1,4 @@
-# tactical_simulation.py - Version avec association optionnelle
+# tactical_simulation.py
 
 import numpy as np
 import math

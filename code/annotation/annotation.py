@@ -1,5 +1,4 @@
-
-# annotation.py - Version corrigée avec problème largeur résolu
+# annotation.py
 
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush
@@ -179,8 +178,6 @@ class ArrowAnnotationManager:
         self.clear_selection()
 
 
-
-
 class CustomArrowItem(QGraphicsItemGroup):
     """Flèche graphique avec attributs métier et méthode de rafraîchissement."""
     def __init__(self, arrow_points, color, width, style, parent=None):
@@ -234,7 +231,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         start, end = pts[-2], pts[-1]
         dx, dy = end.x() - start.x(), end.y() - start.y()
         length = math.hypot(dx, dy)
-        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.6, self.arrow_width * 0.2)
+        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.25)
         if length > 0:
             ratio = max(0, (length - head_length * 0.7) / length)
             new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
@@ -266,181 +263,112 @@ class CustomArrowItem(QGraphicsItemGroup):
         return len(self.arrow_points) > 2
 
     def _create_zigzag_path(self, pts):
-        """Crée un chemin zigzag sinusoïdal segment par segment"""
+        """Crée un chemin zigzag sinusoïdal segment par segment avec période uniforme"""
         if len(pts) < 2:
             return QPainterPath()
         
         path = QPainterPath()
+        path.moveTo(pts[0])
         
-        if len(pts) > 2:  # Mode courbe avec plusieurs points
-            path.moveTo(pts[0])
+        # Période fixe pour tous les segments (en pixels)
+        period_pixels = 2
+        
+        # Calculer le raccourcissement pour la tête de flèche (dernier segment seulement)
+        last_start = pts[-2]
+        last_end = pts[-1]
+        last_dx = last_end.x() - last_start.x()
+        last_dy = last_end.y() - last_start.y()
+        last_length = math.sqrt(last_dx*last_dx + last_dy*last_dy)
+        
+        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.25)
+        
+        # Calculer le nouveau point final raccourci
+        if last_length > 0:
+            ratio = max(0, (last_length - head_length * 0.7) / last_length)
+            shortened_end = QPointF(last_start.x() + last_dx * ratio, last_start.y() + last_dy * ratio)
+        else:
+            shortened_end = last_end
+        
+        # Traiter chaque segment individuellement (LOGIQUE UNIFIÉE)
+        for seg_idx in range(len(pts) - 1):
+            start_pt = pts[seg_idx]
             
-            # Calculer le raccourcissement pour la tête de flèche (dernier segment seulement)
-            last_start = pts[-2]
-            last_end = pts[-1]
-            last_dx = last_end.x() - last_start.x()
-            last_dy = last_end.y() - last_start.y()
-            last_length = math.sqrt(last_dx*last_dx + last_dy*last_dy)
-            
-            head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
-            
-            # Calculer le nouveau point final raccourci
-            if last_length > 0:
-                ratio = max(0, (last_length - head_length * 0.7) / last_length)
-                shortened_end = QPointF(last_start.x() + last_dx * ratio, last_start.y() + last_dy * ratio)
+            # Pour le dernier segment, utiliser le point raccourci
+            if seg_idx == len(pts) - 2:
+                end_pt = shortened_end
             else:
-                shortened_end = last_end
+                end_pt = pts[seg_idx + 1]
             
-            # Traiter chaque segment individuellement
-            for seg_idx in range(len(pts) - 1):
-                start_pt = pts[seg_idx]
-                
-                # Pour le dernier segment, utiliser le point raccourci
-                if seg_idx == len(pts) - 2:
-                    end_pt = shortened_end
-                else:
-                    end_pt = pts[seg_idx + 1]
-                
-                dx = end_pt.x() - start_pt.x()
-                dy = end_pt.y() - start_pt.y()
-                segment_length = math.sqrt(dx*dx + dy*dy)
-                
-                if segment_length == 0:
-                    continue
-                
-                # Direction et perpendiculaire du segment (identique au cas pas curved)
-                ux = dx / segment_length
-                uy = dy / segment_length
-                px = -uy  # vecteur perpendiculaire
-                py = ux
-                
-                # Nombre de points pour ce segment (identique au cas pas curved)
-                num_segments = max(int(segment_length / 1), 30)
-                control_points = []
-                
-                # Déterminer si c'est le dernier segment
-                is_last_segment = (seg_idx == len(pts) - 2)
-                
-                # EXACTEMENT LA MÊME LOGIQUE que le cas pas curved
-                for i in range(1, num_segments + 1):
-                    t = i / num_segments
-                    base_x = start_pt.x() + t * dx
-                    base_y = start_pt.y() + t * dy
-                    
-                    # Pour le dernier segment : 85% sinusoïde + 15% droit
-                    # Pour les autres segments : 100% sinusoïde
-                    if is_last_segment and t > 0.85:
-                        # 15% finaux du dernier segment : ligne droite
-                        final_x = base_x
-                        final_y = base_y
-                    else:
-                        # Sinusoïde (identique au cas pas curved)
-                        oscillation = 1.2 * math.sin(t * 12 * math.pi)
-                        final_x = base_x + oscillation * px
-                        final_y = base_y + oscillation * py
-                    
-                    control_points.append(QPointF(final_x, final_y))
-                
-                # EXACTEMENT LE MÊME LISSAGE que le cas pas curved
-                if len(control_points) >= 2:
-                    if is_last_segment:
-                        # Pour le dernier segment : 85% lisse + 15% droit
-                        smooth_until = int(len(control_points) * 0.85)
-                    else:
-                        # Pour les autres segments : 100% lisse
-                        smooth_until = len(control_points)
-                    
-                    if smooth_until > 1:
-                        # Premier point du segment
-                        if len(control_points) > 1:
-                            path.quadTo(control_points[0], 
-                                       QPointF((control_points[0].x() + control_points[1].x()) / 2,
-                                              (control_points[0].y() + control_points[1].y()) / 2))
-                        
-                        # Points intermédiaires avec lissage
-                        for i in range(1, min(smooth_until, len(control_points) - 1)):
-                            mid_point = QPointF((control_points[i].x() + control_points[i+1].x()) / 2,
-                                               (control_points[i].y() + control_points[i+1].y()) / 2)
-                            path.quadTo(control_points[i], mid_point)
-                    
-                    # Partie droite finale (seulement pour le dernier segment)
-                    for i in range(smooth_until, len(control_points)):
-                        path.lineTo(control_points[i])
-                else:
-                    # Fallback si pas assez de points
-                    for point in control_points:
-                        path.lineTo(point)
-                    
-        else:  # Mode segment simple (cas pas curved)
-            start, end = pts[0], pts[-1]
+            dx = end_pt.x() - start_pt.x()
+            dy = end_pt.y() - start_pt.y()
+            segment_length = math.sqrt(dx*dx + dy*dy)
             
-            dx = end.x() - start.x()
-            dy = end.y() - start.y()
-            length = math.sqrt(dx*dx + dy*dy)
+            if segment_length == 0:
+                continue
             
-            if length == 0:
-                path.moveTo(start)
-                return path
-            
-            # Calculer le raccourcissement pour la tête de flèche
-            head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.2)
-            ratio = max(0, (length - head_length * 0.7) / length)
-            shortened_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-            
-            # Recalculer avec le point final raccourci
-            shortened_dx = shortened_end.x() - start.x()
-            shortened_dy = shortened_end.y() - start.y()
-            shortened_length = math.sqrt(shortened_dx*shortened_dx + shortened_dy*shortened_dy)
-            
-            if shortened_length == 0:
-                path.moveTo(start)
-                return path
-            
-            ux = shortened_dx / shortened_length
-            uy = shortened_dy / shortened_length
+            # Direction et perpendiculaire du segment
+            ux = dx / segment_length
+            uy = dy / segment_length
             px = -uy  # vecteur perpendiculaire
             py = ux
             
-            path.moveTo(start)
-            
-            num_segments = max(int(shortened_length / 1), 30)
+            # Nombre de points pour ce segment
+            num_segments = max(int(segment_length / period_pixels * 10), 30)
             control_points = []
             
+            # Déterminer si c'est le dernier segment
+            is_last_segment = (seg_idx == len(pts) - 2)
+            
+            # Générer les points du segment avec période uniforme
             for i in range(1, num_segments + 1):
                 t = i / num_segments
-                base_x = start.x() + t * shortened_dx
-                base_y = start.y() + t * shortened_dy
+                base_x = start_pt.x() + t * dx
+                base_y = start_pt.y() + t * dy
                 
-                # Oscillation sinusoïdale sur 85% du tracé
-                if t < 0.85:
-                    oscillation = 1.2 * math.sin(t * 12 * math.pi)
-                    final_x = base_x + oscillation * px
-                    final_y = base_y + oscillation * py
-                else:  # 15% finaux : ligne droite
+                # Pour le dernier segment : 85% sinusoïde + 15% droit
+                # Pour les autres segments : 100% sinusoïde
+                if is_last_segment and t > 0.85:
+                    # 15% finaux du dernier segment : ligne droite
                     final_x = base_x
                     final_y = base_y
+                else:
+                    # Sinusoïde avec PÉRIODE FIXE EN PIXELS
+                    distance_pixels = t * segment_length
+                    oscillation = 0.6 * math.sin(distance_pixels / period_pixels * 2 * math.pi)
+                    final_x = base_x + oscillation * px
+                    final_y = base_y + oscillation * py
                 
                 control_points.append(QPointF(final_x, final_y))
             
-            # Dessiner avec courbes lisses pour la partie sinusoïdale
+            # Lissage identique pour tous les cas
             if len(control_points) >= 2:
-                smooth_until = int(len(control_points) * 0.85)
+                if is_last_segment:
+                    # Pour le dernier segment : 85% lisse + 15% droit
+                    smooth_until = int(len(control_points) * 0.85)
+                else:
+                    # Pour les autres segments : 100% lisse
+                    smooth_until = len(control_points)
                 
                 if smooth_until > 1:
-                    path.quadTo(control_points[0], 
-                               QPointF((control_points[0].x() + control_points[1].x()) / 2,
-                                      (control_points[0].y() + control_points[1].y()) / 2))
+                    # Premier point du segment
+                    if len(control_points) > 1:
+                        path.quadTo(control_points[0], 
+                                   QPointF((control_points[0].x() + control_points[1].x()) / 2,
+                                          (control_points[0].y() + control_points[1].y()) / 2))
                     
+                    # Points intermédiaires avec lissage
                     for i in range(1, min(smooth_until, len(control_points) - 1)):
                         mid_point = QPointF((control_points[i].x() + control_points[i+1].x()) / 2,
                                            (control_points[i].y() + control_points[i+1].y()) / 2)
                         path.quadTo(control_points[i], mid_point)
                 
-                # Partie droite finale
+                # Partie droite finale (seulement pour le dernier segment)
                 for i in range(smooth_until, len(control_points)):
                     path.lineTo(control_points[i])
             else:
-                path.lineTo(shortened_end)
+                # Fallback si pas assez de points
+                for point in control_points:
+                    path.lineTo(point)
         
         return path
 

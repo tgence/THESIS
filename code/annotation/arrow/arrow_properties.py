@@ -1,3 +1,4 @@
+# arrow_properties.py
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSpinBox, QButtonGroup, QRadioButton, QColorDialog, QFrame,
@@ -40,7 +41,7 @@ class PlayerCircleWidget(QWidget):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
 
-class ArrowMenu(QWidget):
+class ArrowProperties(QWidget):
     fromPlayerSelected = pyqtSignal(str)
     toPlayerSelected = pyqtSignal(str)
     deleteRequested = pyqtSignal()
@@ -48,8 +49,8 @@ class ArrowMenu(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setWindowFlags(Qt.Dialog | Qt.Window)
+        self.setWindowTitle("Arrow Properties") 
 
         # State
         self.current_arrow = None
@@ -74,9 +75,6 @@ class ArrowMenu(QWidget):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        self.setStyleSheet(""" /* ... (même style, inchangé) ... */ """)  # Garde ton style original
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -212,15 +210,38 @@ class ArrowMenu(QWidget):
         if action['type'] == 'color':
             self.current_color = value
             self._set_color_button(value)
+            if self.current_arrow:
+                self.current_arrow.set_color(value)
+                if hasattr(self.current_arrow, 'refresh_visual'):
+                    self.current_arrow.refresh_visual()
         elif action['type'] == 'width':
             self.current_width = value
             self.width_spin.blockSignals(True)
             self.width_spin.setValue(value)
             self.width_spin.blockSignals(False)
+            if self.current_arrow:
+                self.current_arrow.set_width(value)
+                if hasattr(self.current_arrow, 'refresh_visual'):
+                    self.current_arrow.refresh_visual()
         elif action['type'] == 'style':
             style_map = {"solid": 0, "dotted": 1, "zigzag": 2}
             if value in style_map:
                 self.style_buttons.button(style_map[value]).setChecked(True)
+            if self.current_arrow:
+                self.current_arrow.set_style(value)
+                if hasattr(self.current_arrow, 'refresh_visual'):
+                    self.current_arrow.refresh_visual()
+        elif action['type'] == 'from_player':
+            self.selected_from_player = value
+            self._update_player_display("from", value)
+            if self.current_arrow:
+                self.current_arrow.set_from_player(value)
+        elif action['type'] == 'to_player':
+            self.selected_to_player = value
+            self._update_player_display("to", value)
+            if self.current_arrow:
+                self.current_arrow.set_to_player(value)
+
 
     # --- Property handlers ---
     def _on_color_changed(self):
@@ -236,6 +257,7 @@ class ArrowMenu(QWidget):
                     self.current_arrow.set_color(self.current_color)
                     if hasattr(self.current_arrow, 'refresh_visual'):
                         self.current_arrow.refresh_visual()
+        self.activateWindow()
 
     def _on_width_changed(self, value):
             old_value = self.current_width
@@ -278,6 +300,7 @@ class ArrowMenu(QWidget):
             player_text = dialog.selected_player_text
             
             if selection_type == "from":
+                old_value = self.selected_from_player
                 self.selected_from_player = player_id
                 if player_text == "No Player":
                     # Remettre le bouton "Select Player" et supprimer le widget joueur
@@ -289,8 +312,10 @@ class ArrowMenu(QWidget):
                     self.selected_from_player = None  # Important : remettre à None
                 else:
                     self._update_player_display("from", player_id)
+                self._save_state('from_player', old_value, player_id)
                 self.fromPlayerSelected.emit(player_id or "")
             else:
+                old_value = self.selected_to_player
                 self.selected_to_player = player_id
                 if player_text == "No Player":
                     # Remettre le bouton "Select Player" et supprimer le widget joueur
@@ -302,6 +327,7 @@ class ArrowMenu(QWidget):
                     self.selected_to_player = None  # Important : remettre à None
                 else:
                     self._update_player_display("to", player_id)
+                self._save_state('to_player', old_value, player_id)
                 self.toPlayerSelected.emit(player_id or "")
         
         self.show()
@@ -311,6 +337,18 @@ class ArrowMenu(QWidget):
     def _update_player_display(self, selection_type, player_id):
         player_data = self.home_players.get(player_id) or self.away_players.get(player_id)
         if not player_data:
+            if selection_type == "from":
+                if self.from_player_widget:
+                    self.from_container.removeWidget(self.from_player_widget)
+                    self.from_player_widget.deleteLater()
+                    self.from_player_widget = None
+                self.from_button.show()
+            else:
+                if self.to_player_widget:
+                    self.to_container.removeWidget(self.to_player_widget)
+                    self.to_player_widget.deleteLater()
+                    self.to_player_widget = None
+                self.to_button.show()
             return
         number, main_color, sec_color, num_color = player_data
         if selection_type == "from":

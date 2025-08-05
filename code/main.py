@@ -1,4 +1,4 @@
-# main.py - Version corrigée avec données joueurs complètes
+# main.py
 
 import os
 import sys
@@ -13,11 +13,11 @@ from PyQt5.QtGui import QColor, QIcon, QFont
 
 # Imports locaux
 from pitch import PitchWidget
-from annotation import ArrowAnnotationManager
-from arrow_context_menu import ArrowContextMenu
+from annotation.annotation import ArrowAnnotationManager
+from annotation.arrow.arrow_properties import ArrowProperties
 from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events, format_match_time, compute_pressure
 from trajectory import TrajectoryManager
-from ui_components import ActionFilterBar, MatchActionsDialog, create_nav_button
+from match_actions import ActionFilterBar, create_nav_button
 from utils.frame_utils import FrameManager, PossessionTracker
 from slider import TimelineWidget
 from score_manager import ScoreManager
@@ -465,7 +465,7 @@ class MainWindow(QWidget):
 
 
         # Menu contextuel pour flèches
-        self.arrow_context_menu = ArrowContextMenu(self)
+        self.arrow_context_menu = ArrowProperties(self)
         self._setup_arrow_context_menu()
         
         self.set_tool_mode("select")
@@ -938,7 +938,6 @@ class MainWindow(QWidget):
 
         # Sinon, créer une nouvelle dialog
         self.settings_dialog = SettingsDialog(self.settings_manager, self)
-        self.settings_dialog.setAttribute(Qt.WA_DeleteOnClose, True)
         # Connecter le signal et garder une référence pour déconnexion
         if self._settings_signal_connection is not None:
             try:
