@@ -257,7 +257,6 @@ class ArrowProperties(QWidget):
                     self.current_arrow.set_color(self.current_color)
                     if hasattr(self.current_arrow, 'refresh_visual'):
                         self.current_arrow.refresh_visual()
-        self.activateWindow()
 
     def _on_width_changed(self, value):
             old_value = self.current_width
