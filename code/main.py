@@ -839,35 +839,50 @@ class MainWindow(QWidget):
             return
         super().keyPressEvent(event)
     
+
+
     def eventFilter(self, obj, event):
         if obj != self.pitch_widget.view.viewport():
             return False
         
         if self.current_tool == "select":
-            # En mode sélection, gérer les clics sur les flèches pour ouvrir le menu
-            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            # En mode sélection, gérer SEULEMENT les clics initiaux
+            if event.type() == QEvent.MouseButtonPress:
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())
                 clicked_arrow = self._find_arrow_at_position(scene_pos)
-                if clicked_arrow:
-                    # Sélectionner la flèche dans le manager
-                    self.annotation_manager.select_arrow(clicked_arrow)
-                    
-                    # Ouvrir le menu contextuel
-                    global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
-                    # Ajuster la position pour éviter que le menu sorte de l'écran
-                    screen_geometry = QApplication.desktop().screenGeometry()
-                    if global_pos.x() + 300 > screen_geometry.width():
-                        global_pos.setX(global_pos.x() - 300)
-                    if global_pos.y() + 500 > screen_geometry.height():
-                        global_pos.setY(global_pos.y() - 500)
-                    
-                    self.arrow_context_menu.show_for_arrow(clicked_arrow, global_pos)
-                    return True
-                else:
-                    # Clic sur une zone vide - désélectionner
-                    self.annotation_manager.clear_selection()
+                                
+                if event.button() == Qt.LeftButton:
+                    if clicked_arrow:
+                        # Simple clic gauche : sélectionner seulement
+                        self.annotation_manager.select_arrow(clicked_arrow)
+                        # IMPORTANT: Ne pas retourner True ici pour permettre le drag
+                        return False  # Laisser Qt gérer le drag & drop
+                    else:
+                        # Clic sur zone vide : désélectionner
+                        self.annotation_manager.clear_selection()
+                        return True  # On peut intercepter ça
+                        
+                elif event.button() == Qt.RightButton:
+                    if clicked_arrow:
+                        # Clic droit : sélectionner ET ouvrir le menu des propriétés
+                        self.annotation_manager.select_arrow(clicked_arrow)
+                        
+                        global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
+                        # Ajuster la position pour éviter que le menu sorte de l'écran
+                        screen_geometry = QApplication.desktop().screenGeometry()
+                        if global_pos.x() + 300 > screen_geometry.width():
+                            global_pos.setX(global_pos.x() - 300)
+                        if global_pos.y() + 500 > screen_geometry.height():
+                            global_pos.setY(global_pos.y() - 500)
+                        
+                        self.arrow_context_menu.show_for_arrow(clicked_arrow, global_pos)
+                        return True
+            
+            # IMPORTANT: Ne pas intercepter les événements de déplacement en mode select
+            # pour permettre le drag & drop des flèches sélectionnées
             return False
         
+        # Modes création de flèches (arrow/curve) - logique existante
         if event.type() == QEvent.MouseButtonPress:
             if event.button() == Qt.LeftButton:
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())

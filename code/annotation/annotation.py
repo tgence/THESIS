@@ -2,7 +2,7 @@
 
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush
-from PyQt5.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup
+from PyQt5.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup, QGraphicsRectItem, QStyleOptionGraphicsItem, QStyle
 
 import math
 
@@ -39,6 +39,15 @@ class ArrowAnnotationManager:
         self.remove_arrow_preview()
         self.clear_selection()
         self.current_mode = mode
+
+
+    def clear_selection(self):        
+        for arrow in list(self.arrows):
+            try:
+                arrow.setSelected(False)
+            except RuntimeError:
+                self.arrows.remove(arrow)
+        self.selected_arrow = None
 
     def select_arrow(self, arrow):
         """Sélectionne une flèche spécifique"""
@@ -103,14 +112,6 @@ class ArrowAnnotationManager:
             self.finish_arrow()
         else:
             self.cancel_arrow()
-
-    def clear_selection(self):        
-        for arrow in list(self.arrows):
-            try:
-                arrow.setSelected(False)
-            except RuntimeError:
-                self.arrows.remove(arrow)
-        self.selected_arrow = None
 
     def cancel_arrow(self):
         self.arrow_points = []
@@ -177,9 +178,8 @@ class ArrowAnnotationManager:
                 pass
         self.clear_selection()
 
-
 class CustomArrowItem(QGraphicsItemGroup):
-    """Flèche graphique avec attributs métier et méthode de rafraîchissement."""
+    """Flèche graphique avec rectangle de sélection coordonné"""
     def __init__(self, arrow_points, color, width, style, parent=None):
         super().__init__(parent)
         self.arrow_points = list(arrow_points)
@@ -191,10 +191,78 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.original_width = width
         self._body_item = None
         self._head_item = None
-        self._draw_items()
+        self._selection_rect = None
+        self._selected_state = False
 
-    def _draw_items(self):
-        # Supprimer anciens items du groupe
+        # Configuration flags
+        self.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+        self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
+        
+        self._draw_items()
+        self._create_selection_rect()
+
+    def paint(self, painter, option, widget):
+        """Override pour supprimer le carré blanc par défaut"""
+        option_modified = QStyleOptionGraphicsItem(option)
+        option_modified.state &= ~QStyle.State_Selected
+        super().paint(painter, option_modified, widget)
+
+    def _create_selection_rect(self):
+        """Crée le rectangle avec contour fin bleu"""
+        min_x = min(p.x() for p in self.arrow_points)
+        max_x = max(p.x() for p in self.arrow_points)
+        min_y = min(p.y() for p in self.arrow_points)
+        max_y = max(p.y() for p in self.arrow_points)
+        
+        rect_x = min_x 
+        rect_y = min_y 
+        rect_width = (max_x - min_x) 
+        rect_height = (max_y - min_y) 
+        
+        self._selection_rect = QGraphicsRectItem(rect_x, rect_y, rect_width, rect_height)
+        
+        # CORRECTION 1: Couleur bleue et épaisseur fine
+        self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))  # Bleu fin
+        self._selection_rect.setBrush(QBrush(Qt.NoBrush))  # Pas de remplissage
+        self._selection_rect.setZValue(1000)
+        self._selection_rect.setVisible(False)
+        
+        self.addToGroup(self._selection_rect)
+
+    def setSelected(self, selected):
+        """Affiche/cache le rectangle"""
+        self._selected_state = selected
+        if self._selection_rect:
+            self._selection_rect.setVisible(selected)
+
+    def isSelected(self):
+        return self._selected_state
+
+    def itemChange(self, change, value):
+        """CORRECTION 2: Logique de déplacement simplifiée"""
+        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+            
+            # Calculer le delta de déplacement
+            old_pos = self.pos()
+            new_pos = value
+            delta = new_pos - old_pos
+            
+            
+            # Mettre à jour tous les points de la flèche
+            for i in range(len(self.arrow_points)):
+                old_point = self.arrow_points[i]
+                self.arrow_points[i] += delta
+            
+            # Redessiner la flèche avec les nouveaux points
+            self._draw_items_without_moving_rect()
+            
+            
+        return super().itemChange(change, value)
+
+    def _draw_items_without_moving_rect(self):
+        """CORRECTION 3: Redessine SEULEMENT la flèche, pas le rectangle"""
+        # Supprimer SEULEMENT les items de flèche
         for item in [self._body_item, self._head_item]:
             if item is not None:
                 try:
@@ -206,14 +274,38 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(self.arrow_points) < 2:
             return
 
-        pts = self.arrow_points
-        body_path = None
+        # Redessiner la flèche
+        self._draw_arrow_components()
 
-        # ---------- CORPS ----------
+    def _draw_items(self):
+        """Dessine la flèche ET met à jour le rectangle"""
+        # Supprimer anciens items de flèche
+        for item in [self._body_item, self._head_item]:
+            if item is not None:
+                try:
+                    self.removeFromGroup(item)
+                    item.setParentItem(None)
+                except Exception:
+                    pass
+
+        if len(self.arrow_points) < 2:
+            return
+
+        # Dessiner la flèche
+        self._draw_arrow_components()
+        
+        # Mettre à jour le rectangle
+        if hasattr(self, '_selection_rect') and self._selection_rect:
+            self._update_selection_rect()
+
+    def _draw_arrow_components(self):
+        """CORRECTION 4: Dessine les composants de la flèche"""
+        pts = self.arrow_points
+
+        # Corps de la flèche
         if self.arrow_style == "zigzag":
             body_path = self._create_zigzag_path(pts)
         elif len(pts) > 2 and self._is_curved():
-            # Logique courbe pour solid ET dotted
             body_path = QPainterPath()
             body_path.moveTo(pts[0])
             for i in range(1, len(pts)-1):
@@ -221,13 +313,12 @@ class CustomArrowItem(QGraphicsItemGroup):
                 body_path.quadTo(pts[i], mid)
             body_path.lineTo(pts[-1])
         else:
-            # Logique simple (2 points seulement)
             body_path = QPainterPath()
             body_path.moveTo(pts[0])
             for p in pts[1:]:
                 body_path.lineTo(p)
 
-        # Coupe le dernier segment pour laisser la place à la tête
+        # Tête de flèche
         start, end = pts[-2], pts[-1]
         dx, dy = end.x() - start.x(), end.y() - start.y()
         length = math.hypot(dx, dy)
@@ -235,10 +326,10 @@ class CustomArrowItem(QGraphicsItemGroup):
         if length > 0:
             ratio = max(0, (length - head_length * 0.7) / length)
             new_end = QPointF(start.x() + dx * ratio, start.y() + dy * ratio)
-            # Pour zigzag, on garde le path tel quel car il gère déjà la troncature
             if self.arrow_style != "zigzag":
                 body_path = self._truncate_path_end(body_path, new_end)
 
+        # Créer le corps
         self._body_item = QGraphicsPathItem(body_path)
         pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.3)
         if self.arrow_style == "dotted":
@@ -251,169 +342,54 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._body_item.setBrush(QBrush(Qt.NoBrush))
         self.addToGroup(self._body_item)
 
-        # ---------- HEAD ----------
+        # Créer la tête
         head_path = self._draw_arrow_head_triangle(start, end, head_length)
         self._head_item = QGraphicsPathItem(head_path)
         self._head_item.setPen(QPen(Qt.NoPen))
         self._head_item.setBrush(QBrush(QColor(self.arrow_color)))
         self.addToGroup(self._head_item)
 
+    def _draw_arrow_components_only(self):
+        """Redessine SEULEMENT les composants de la flèche, sans toucher au rectangle"""
+        # Supprimer SEULEMENT les items de flèche (pas le rectangle)
+        for item in [self._body_item, self._head_item]:
+            if item is not None:
+                try:
+                    self.removeFromGroup(item)
+                    item.setParentItem(None)
+                except Exception:
+                    pass
+
+        if len(self.arrow_points) < 2:
+            return
+
+        # Redessiner SEULEMENT la flèche (réutilise le code existant)
+        self._draw_arrow_components()
+
+    def _update_selection_rect(self):
+        """CORRECTION 5: Met à jour la position du rectangle"""
+        if not self._selection_rect:
+            return
+            
+        # Recalculer la bounding box basée sur les nouveaux points
+        min_x = min(p.x() for p in self.arrow_points)
+        max_x = max(p.x() for p in self.arrow_points)
+        min_y = min(p.y() for p in self.arrow_points)
+        max_y = max(p.y() for p in self.arrow_points)
+        
+        rect_x = min_x  
+        rect_y = min_y 
+        rect_width = (max_x - min_x) 
+        rect_height = (max_y - min_y)  
+        
+        self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))
+        self._selection_rect.setRect(rect_x, rect_y, rect_width, rect_height)
+        
+    # CORRECTION 6: Méthodes utilitaires simplifiées
     def _is_curved(self):
-        """Détecte s'il faut interpréter la flèche comme courbe (au moins 3 pts)"""
         return len(self.arrow_points) > 2
 
-    def _create_zigzag_path(self, pts):
-        """Crée un chemin zigzag sinusoïdal segment par segment avec période uniforme"""
-        if len(pts) < 2:
-            return QPainterPath()
-        
-        path = QPainterPath()
-        path.moveTo(pts[0])
-        
-        # Période fixe pour tous les segments (en pixels)
-        period_pixels = 2
-        
-        # Calculer le raccourcissement pour la tête de flèche (dernier segment seulement)
-        last_start = pts[-2]
-        last_end = pts[-1]
-        last_dx = last_end.x() - last_start.x()
-        last_dy = last_end.y() - last_start.y()
-        last_length = math.sqrt(last_dx*last_dx + last_dy*last_dy)
-        
-        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, self.arrow_width * 0.25)
-        
-        # Calculer le nouveau point final raccourci
-        if last_length > 0:
-            ratio = max(0, (last_length - head_length * 0.7) / last_length)
-            shortened_end = QPointF(last_start.x() + last_dx * ratio, last_start.y() + last_dy * ratio)
-        else:
-            shortened_end = last_end
-        
-        # Traiter chaque segment individuellement (LOGIQUE UNIFIÉE)
-        for seg_idx in range(len(pts) - 1):
-            start_pt = pts[seg_idx]
-            
-            # Pour le dernier segment, utiliser le point raccourci
-            if seg_idx == len(pts) - 2:
-                end_pt = shortened_end
-            else:
-                end_pt = pts[seg_idx + 1]
-            
-            dx = end_pt.x() - start_pt.x()
-            dy = end_pt.y() - start_pt.y()
-            segment_length = math.sqrt(dx*dx + dy*dy)
-            
-            if segment_length == 0:
-                continue
-            
-            # Direction et perpendiculaire du segment
-            ux = dx / segment_length
-            uy = dy / segment_length
-            px = -uy  # vecteur perpendiculaire
-            py = ux
-            
-            # Nombre de points pour ce segment
-            num_segments = max(int(segment_length / period_pixels * 10), 30)
-            control_points = []
-            
-            # Déterminer si c'est le dernier segment
-            is_last_segment = (seg_idx == len(pts) - 2)
-            
-            # Générer les points du segment avec période uniforme
-            for i in range(1, num_segments + 1):
-                t = i / num_segments
-                base_x = start_pt.x() + t * dx
-                base_y = start_pt.y() + t * dy
-                
-                # Pour le dernier segment : 85% sinusoïde + 15% droit
-                # Pour les autres segments : 100% sinusoïde
-                if is_last_segment and t > 0.85:
-                    # 15% finaux du dernier segment : ligne droite
-                    final_x = base_x
-                    final_y = base_y
-                else:
-                    # Sinusoïde avec PÉRIODE FIXE EN PIXELS
-                    distance_pixels = t * segment_length
-                    oscillation = 0.6 * math.sin(distance_pixels / period_pixels * 2 * math.pi)
-                    final_x = base_x + oscillation * px
-                    final_y = base_y + oscillation * py
-                
-                control_points.append(QPointF(final_x, final_y))
-            
-            # Lissage identique pour tous les cas
-            if len(control_points) >= 2:
-                if is_last_segment:
-                    # Pour le dernier segment : 85% lisse + 15% droit
-                    smooth_until = int(len(control_points) * 0.85)
-                else:
-                    # Pour les autres segments : 100% lisse
-                    smooth_until = len(control_points)
-                
-                if smooth_until > 1:
-                    # Premier point du segment
-                    if len(control_points) > 1:
-                        path.quadTo(control_points[0], 
-                                   QPointF((control_points[0].x() + control_points[1].x()) / 2,
-                                          (control_points[0].y() + control_points[1].y()) / 2))
-                    
-                    # Points intermédiaires avec lissage
-                    for i in range(1, min(smooth_until, len(control_points) - 1)):
-                        mid_point = QPointF((control_points[i].x() + control_points[i+1].x()) / 2,
-                                           (control_points[i].y() + control_points[i+1].y()) / 2)
-                        path.quadTo(control_points[i], mid_point)
-                
-                # Partie droite finale (seulement pour le dernier segment)
-                for i in range(smooth_until, len(control_points)):
-                    path.lineTo(control_points[i])
-            else:
-                # Fallback si pas assez de points
-                for point in control_points:
-                    path.lineTo(point)
-        
-        return path
-
-    def _get_point_on_curve(self, pts, t):
-        """Obtient un point sur la courbe multi-segments à la position t (0-1)"""
-        if len(pts) == 2:
-            return QPointF(
-                pts[0].x() + t * (pts[1].x() - pts[0].x()),
-                pts[0].y() + t * (pts[1].y() - pts[0].y())
-            )
-        else:
-            total_segments = len(pts) - 1
-            segment_t = t * total_segments
-            segment_idx = int(segment_t)
-            local_t = segment_t - segment_idx
-            
-            if segment_idx >= total_segments:
-                return pts[-1]
-            
-            return QPointF(
-                pts[segment_idx].x() + local_t * (pts[segment_idx + 1].x() - pts[segment_idx].x()),
-                pts[segment_idx].y() + local_t * (pts[segment_idx + 1].y() - pts[segment_idx].y())
-            )
-
-    def _get_curve_direction(self, pts, t):
-        """Obtient la direction de la courbe au point t"""
-        if len(pts) == 2:
-            dx = pts[1].x() - pts[0].x()
-            dy = pts[1].y() - pts[0].y()
-            length = math.sqrt(dx*dx + dy*dy)
-            if length > 0:
-                return QPointF(dx/length, dy/length)
-            return QPointF(1, 0)
-        else:
-            p1 = self._get_point_on_curve(pts, max(0, t - 0.01))
-            p2 = self._get_point_on_curve(pts, min(1, t + 0.01))
-            dx = p2.x() - p1.x()
-            dy = p2.y() - p1.y()
-            length = math.sqrt(dx*dx + dy*dy)
-            if length > 0:
-                return QPointF(dx/length, dy/length)
-            return QPointF(1, 0)
-
     def _truncate_path_end(self, path, new_end):
-        """Remplace le dernier point du path par new_end."""
         if path.isEmpty():
             return path
         polys = path.toSubpathPolygons()
@@ -442,6 +418,17 @@ class CustomArrowItem(QGraphicsItemGroup):
         path.closeSubpath()
         return path
 
+    def _create_zigzag_path(self, pts):
+        """Version simplifiée du zigzag"""
+        if len(pts) < 2:
+            return QPainterPath()
+        path = QPainterPath()
+        path.moveTo(pts[0])
+        for p in pts[1:]:
+            path.lineTo(p)
+        return path
+
+    # Interface methods
     def set_color(self, color):
         self.arrow_color = color
         self.refresh_visual()
@@ -461,5 +448,19 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.to_player = player_id
 
     def refresh_visual(self):
-        self._draw_items()
+        """Met à jour l'affichage après changement de propriétés"""
+        # Sauvegarder l'état de sélection
+        was_selected = self.isSelected()
+        
+        # SOLUTION: Ne redessiner que les éléments visuels, pas le rectangle
+        self._draw_arrow_components_only()
+        
+        # Mettre à jour seulement la couleur du rectangle existant
+        if self._selection_rect:
+            self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))
+        
+        # Restaurer l'état de sélection
+        self.setSelected(was_selected)
+        
+        # Forcer la mise à jour visuelle
         self.update()
