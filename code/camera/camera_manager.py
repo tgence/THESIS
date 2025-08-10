@@ -1,3 +1,9 @@
+"""
+Camera manager for the pitch view.
+
+Handles zoom, panning, camera presets (full, ball-follow, corners, penalties),
+and smooth updates while following the ball.
+"""
 # camera_manager.py
 
 import numpy as np
@@ -7,14 +13,14 @@ from PyQt5.QtGui import QTransform
 from config import *
 
 class CameraManager:
-    """Gestionnaire des modes de caméra et zoom pour le terrain"""
+    """Manage camera modes, zoom, and ball-follow for the pitch view."""
     
     def __init__(self, pitch_widget):
         self.pitch_widget = pitch_widget
         self.view = pitch_widget.view
         self.scene = pitch_widget.scene
         
-        # Modes de caméra disponibles (noms simplifiés) - SANS FULL
+        # Available camera modes (keys) - excluding "full" which is implicit
         self.CAMERA_MODES = {
             "ball": "Ball", 
             "top_left_corner": "TLC",
@@ -29,24 +35,24 @@ class CameraManager:
         self.follow_ball_active = False
         self.current_ball_pos = None
         
-        # Animation pour transitions fluides
+        # Animation scaffolding for future smooth transitions
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self._animate_step)
         self.animation_duration = 400  # ms (plus rapide)
-        self.animation_steps = 20      # moins d'étapes
+        self.animation_steps = 20      # fewer steps
         self.current_animation_step = 0
         self.animation_start_transform = QTransform()
         self.animation_target_transform = QTransform()
         self.animation_start_center = QPointF()
         self.animation_target_center = QPointF()
         
-        # Sauvegarde de la vue complète
+        # Save the full view area
         self.full_view_rect = None
         self._save_full_view()
     
     def _save_full_view(self):
         """Sauvegarde la vue complète du terrain avec zoom de base"""
-        # Vue complète par défaut au démarrage - ZOOM TRÈS PROCHE
+        # Default full view at startup – fairly close zoom
         margin = SCENE_EXTRA_GRASS
         self.full_view_rect = QRectF(
             self.pitch_widget.X_MIN - margin,
@@ -57,15 +63,15 @@ class CameraManager:
         
     
     def get_available_modes(self):
-        """Retourne la liste des modes disponibles"""
+        """Return the available camera mode keys."""
         return self.CAMERA_MODES
     
     def get_current_mode(self):
-        """Retourne le mode actuel"""
+        """Return the active camera mode key."""
         return self.current_mode
     
     def set_camera_mode(self, mode, animate=True):
-        """Change le mode de caméra"""
+        """Change camera mode; optionally animate the transition."""
         if mode == "full" or mode not in self.CAMERA_MODES:
             self.current_mode = "full"
             self.follow_ball_active = False
@@ -88,7 +94,7 @@ class CameraManager:
         return True
     
     def _get_mode_rect(self, mode):
-        """Calculate the rectangle for a given camera mode"""
+        """Calculate the scene rectangle corresponding to a camera preset."""
         X_MIN = self.pitch_widget.X_MIN
         X_MAX = self.pitch_widget.X_MAX
         Y_MIN = self.pitch_widget.Y_MIN
@@ -115,46 +121,38 @@ class CameraManager:
     
 
         elif mode == "top_left_corner":
-            # TLC: s'affiche en BAS à gauche sur l'écran (à cause de l'inversion Y)
-            # Gauche: derrière but gauche, Droite: milieu terrain
-            # Du milieu vers le bas du terrain (Y_MAX)
+            # TLC (Top Left Corner in pitch coords) appears bottom-left on screen due to Y inversion
             return QRectF(
-                X_MIN,                        # Derrière le but gauche
+                X_MIN,                        # behind left goal
                  Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain
                 PITCH_LENGTH//2,             # Largeur jusqu'au milieu
                 PITCH_WIDTH * 0.8       # 60% vers le bas (Y_MAX)
             )
             
         elif mode == "top_right_corner":
-            # TRC: s'affiche en BAS à droite sur l'écran (à cause de l'inversion Y)
-            # Gauche: milieu terrain, Droite: derrière but droit
-            # Du milieu vers le bas du terrain (Y_MAX)
+            # TRC appears bottom-right on screen due to Y inversion
             return QRectF(
                 X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
                 Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain (+ ((PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2))
-                PITCH_LENGTH // 2 ,            # Largeur jusqu'au bout + derrière
+                PITCH_LENGTH // 2 ,            # width up to the middle
                 PITCH_WIDTH * 0.8        # 60% vers le bas (Y_MAX)
             )
             
         elif mode == "bottom_left_corner":
-            # BLC: s'affiche en HAUT à gauche sur l'écran (à cause de l'inversion Y)
-            # Gauche: derrière but gauche, Droite: milieu terrain
-            # Du haut du terrain vers le milieu
+            # BLC appears top-left on screen due to Y inversion
             return QRectF(
                 X_MIN,     # Depuis milieu terrain
                 Y_MIN,                            # Tout en haut (Y_MIN)
-                PITCH_LENGTH//2    ,            # Largeur jusqu'au bout + derrière
+                PITCH_LENGTH//2    ,            # width up to the middle
                 PITCH_WIDTH * 0.8                 # 60% vers le milieu
             )
             
         elif mode == "bottom_right_corner":
-            # BRC: s'affiche en HAUT à droite sur l'écran (à cause de l'inversion Y)
-            # Gauche: milieu terrain, Droite: derrière but droit
-            # Du haut du terrain vers le milieu
+            # BRC appears top-right on screen due to Y inversion
             return QRectF(
                 X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
                 Y_MIN,                            # Tout en haut (Y_MIN)
-                PITCH_LENGTH//2,            # Largeur jusqu'au bout + derrière
+                PITCH_LENGTH//2,            # width up to the middle
                 PITCH_WIDTH * 0.8                 # 60% vers le milieu
             )
         
@@ -179,11 +177,11 @@ class CameraManager:
         return self.full_view_rect
         
     def _set_view_immediately(self, mode):
-        """Debug version pour comprendre les différences"""
+        """Apply the camera preset immediately (keeping the Y inversion)."""
         
         target_rect = self._get_mode_rect(mode)
         
-        # Calculer la transformation manuellement pour conserver scale(1, -1)
+        # Compute transform manually to keep scale(1, -1)
         view_rect = self.view.viewport().rect()
         
         # Calculer le facteur de zoom pour faire tenir le rectangle cible
@@ -191,23 +189,23 @@ class CameraManager:
         scale_y = view_rect.height() / target_rect.height()
         scale_factor = min(scale_x, scale_y) * 0.9
         
-        # État initial de la vue
+        # Initial view state
         initial_transform = self.view.transform()
         
-        # Centre du rectangle cible
+        # Center on the target rect
         center = target_rect.center()
         
-        # Appliquer la transformation SANS écraser scale(1, -1)
+        # Apply the transform without losing the scale(1, -1)
         transform = QTransform()
         transform.scale(scale_factor, scale_factor)
         transform.scale(1, -1)
         
         self.view.setTransform(transform)
         
-        # Centrer sur le point d'intérêt
+        # Center on the point of interest
         self.view.centerOn(center)
         
-        # Zoom supplémentaire
+        # Extra zoom factors per mode
         extra_zoom_factors = {
             "full": 2.5,
             "ball": 1.25,
@@ -226,17 +224,16 @@ class CameraManager:
 
     
     def _animate_to_mode(self, mode):
-        """Animation simplifiée vers le mode"""
+        """Simplified animation stub that applies the mode directly."""
         if self.animation_timer.isActive():
             self.animation_timer.stop()
         
-        # Pour simplifier, on fait juste un appel direct
-        # L'animation complète nécessiterait de recalculer toutes les transformations
+        # For simplicity, apply preset immediately; full animation would adjust transforms gradually
         self._set_view_immediately(mode)
     
     def _animate_step(self):
         """Execute one step of camera animation"""
-        # Animation désactivée pour éviter les problèmes de transformation
+        # Animation disabled for now to avoid transform glitches
         pass
     
     def _ease_in_out_cubic(self, t):
@@ -247,18 +244,18 @@ class CameraManager:
             return 1 - pow(-2 * t + 2, 3) / 2
     
     def update_ball_position(self, x, y):
-        """Met à jour la position de la balle pour le suivi"""
+        """Update tracked ball position and adjust the view if following."""
         self.current_ball_pos = (x, y)
         
         if self.follow_ball_active and not np.isnan(x) and not np.isnan(y):
             self._update_ball_follow()
     
     def _update_ball_follow(self):
-        """Met à jour la vue pour suivre la balle"""
+        """Pan smoothly towards the new ball position."""
         if not self.current_ball_pos:
             return
             
-        # Mouvement fluide vers la nouvelle position de la balle
+        # Smoothly move towards the ball's new position
         current_center = self.view.mapToScene(self.view.rect().center())
         target_center = QPointF(self.current_ball_pos[0], self.current_ball_pos[1])
         
@@ -273,15 +270,15 @@ class CameraManager:
             self.view.centerOn(new_center)
     
     def zoom_in(self, factor=1.2):
-        """Zoom avant"""
+        """Zoom in by the given factor."""
         self.view.scale(factor, factor)
     
     def zoom_out(self, factor=0.83):
-        """Zoom arrière"""
+        """Zoom out by the given factor."""
         self.view.scale(factor, factor)
     
     def reset_zoom(self):
-        """Remet le zoom par défaut en mode full"""
+        """Reset to the full-pitch preset and disable ball-follow."""
         self.current_mode = "full"
         self.follow_ball_active = False
         self._set_view_immediately("full")

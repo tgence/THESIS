@@ -1,3 +1,11 @@
+"""
+Visual settings management and dialog.
+
+Provides:
+- `SettingsManager`: central, signal-emitting store for visual preferences
+- `ColorButton`: small helper widget to pick/show a color
+- `SettingsDialog`: non-modal dialog to adjust player scale and colors
+"""
 # settings.py
 
 from PyQt5.QtWidgets import (
@@ -10,27 +18,31 @@ from config import BALL_COLOR, CONFIG
 
 
 class SettingsManager(QObject):
-    """Gestionnaire centralisé des paramètres visuels de l'application"""
+    """Central store for visual settings with Qt signals.
+
+    Emits granular and aggregate signals when settings change. Updating
+    `player_scale` updates the global `CONFIG.scale` for size-dependent values.
+    """
     
-    # Signaux émis quand les paramètres changent
+    # Signals emitted when settings change
     playerScaleChanged = pyqtSignal(float)
     ballColorChanged = pyqtSignal(str)
     offsideColorChanged = pyqtSignal(str)
     arrowColorChanged = pyqtSignal(str)
-    settingsChanged = pyqtSignal()  # Signal général pour tout changement
+    settingsChanged = pyqtSignal()  # general signal for any change
     
     def __init__(self):
         super().__init__()
         
-        # Valeurs par défaut
+        # Defaults
         self._player_scale = 1.0
         self._ball_color = BALL_COLOR
-        self._offside_color = "#FF40FF"  # Magenta par défaut
-        self._arrow_color = "#000000"    # Noir par défaut
+        self._offside_color = "#FF40FF"  # default magenta
+        self._arrow_color = "#000000"    # default black
         self._custom_arrow_color = False
         self._custom_offside_color = False
         
-        # Limites
+        # Bounds
         self.MIN_PLAYER_SCALE = 0.5
         self.MAX_PLAYER_SCALE = 2.0
         
@@ -43,7 +55,7 @@ class SettingsManager(QObject):
         value = max(self.MIN_PLAYER_SCALE, min(self.MAX_PLAYER_SCALE, value))
         if self._player_scale != value:
             self._player_scale = value
-            CONFIG.scale = value  # Mettre à jour la config globale
+            CONFIG.scale = value  # update global dynamic config
             self.playerScaleChanged.emit(value)
             self.settingsChanged.emit()
     
@@ -85,7 +97,7 @@ class SettingsManager(QObject):
     def reset_theme_colors(self, theme):
         self._custom_arrow_color = False
         self._custom_offside_color = False
-        # Set sans réémettre settingsChanged (évite double update), utilise les setters pour cohérence
+        # Set without re-emitting settingsChanged (avoid double update)
         self._ball_color = BALL_COLOR
         self._arrow_color = theme.get("arrow", "#000000")
         self._offside_color = theme.get("offside", "#FF40FF")
@@ -102,7 +114,7 @@ class SettingsManager(QObject):
 
 
 class ColorButton(QPushButton):
-    """Bouton personnalisé pour sélectionner une couleur"""
+    """Push button that displays and lets users pick a color."""
     
     colorChanged = pyqtSignal(str)
     
@@ -140,14 +152,14 @@ class ColorButton(QPushButton):
 
 
 class SettingsDialog(QDialog):
-    """Dialog pour modifier les paramètres visuels"""
+    """Non-modal dialog to adjust player size and overlay colors."""
     
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self.settings_manager = settings_manager
         self.setWindowTitle("Visual Settings")
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.setModal(False)  # Non-modal pour voir les changements en temps réel
+        self.setModal(False)  # non-modal to see live changes
         self.setFixedSize(350, 400)
         
         self._current_theme = getattr(parent, 'current_theme', None)
@@ -156,14 +168,14 @@ class SettingsDialog(QDialog):
         self._connect_signals()
         
     def _setup_ui(self):
-        """Configure l'interface utilisateur"""
+        """Configure the UI."""
         layout = QVBoxLayout(self)
         
-        # === Groupe Taille des joueurs ===
-        size_group = QGroupBox("Player Size")
+        # === Player size group ===
+        size_group = QGroupBox("Global Scale")
         size_layout = QVBoxLayout()
         
-        # Slider avec labels
+        # Slider with labels
         slider_layout = QHBoxLayout()
         self.size_slider = QSlider(Qt.Horizontal)
         self.size_slider.setMinimum(50)   # 0.5x
@@ -182,28 +194,28 @@ class SettingsDialog(QDialog):
         
         size_layout.addLayout(slider_layout)
         
-        # Boutons preset
+        # Preset buttons (optional)
         preset_layout = QHBoxLayout()
         size_layout.addLayout(preset_layout)
         
         size_group.setLayout(size_layout)
         layout.addWidget(size_group)
         
-        # === Groupe Couleurs ===
+        # === Colors group ===
         colors_group = QGroupBox("Colors")
         colors_layout = QGridLayout()
         
-        # Couleur de la balle
+        # Ball color
         colors_layout.addWidget(QLabel("Ball :"), 0, 0)
         self.ball_color_btn = ColorButton()
         colors_layout.addWidget(self.ball_color_btn, 0, 1)
         
-        # Couleur ligne hors-jeu
+        # Offside line color
         colors_layout.addWidget(QLabel("Offside Line :"), 1, 0)
         self.offside_color_btn = ColorButton()
         colors_layout.addWidget(self.offside_color_btn, 1, 1)
         
-        # Couleur flèches orientation
+        # Orientation arrows color
         colors_layout.addWidget(QLabel("Orientation Arrows :"), 2, 0)
         self.arrow_color_btn = ColorButton()
         colors_layout.addWidget(self.arrow_color_btn, 2, 1)
@@ -213,7 +225,7 @@ class SettingsDialog(QDialog):
         colors_group.setLayout(colors_layout)
         layout.addWidget(colors_group)
         
-        # === Boutons de contrôle ===
+        # === Control buttons ===
         layout.addStretch()
         
         button_layout = QHBoxLayout()
@@ -232,25 +244,25 @@ class SettingsDialog(QDialog):
         layout.addLayout(button_layout)
     
     def _load_current_settings(self):
-        """Charge les paramètres actuels"""
+        """Load current settings into the widgets."""
         settings = self.settings_manager.get_all_settings()
         
-        # Taille des joueurs
+        # Player size
         scale_value = int(settings['player_scale'] * 100)
         self.size_slider.setValue(scale_value)
         self._update_size_label(scale_value)
         
-        # Couleurs
+        # Colors
         self.ball_color_btn.update_color(settings['ball_color'])
         self.offside_color_btn.update_color(settings['offside_color'])
         self.arrow_color_btn.update_color(settings['arrow_color'])
     
     def _connect_signals(self):
-        """Connecte les signaux aux slots"""
+        """Wire widget signals to handlers."""
         # Slider
         self.size_slider.valueChanged.connect(self._on_size_changed)
         
-        # Boutons couleur
+        # Color buttons
         self.ball_color_btn.colorChanged.connect(
             lambda c: setattr(self.settings_manager, 'ball_color', c)
         )
@@ -262,22 +274,22 @@ class SettingsDialog(QDialog):
         )
     
     def _on_size_changed(self, value):
-        """Callback pour changement de taille"""
+        """Callback for player size change."""
         scale = value / 100.0
         self._update_size_label(value)
         self.settings_manager.player_scale = scale
     
     def _update_size_label(self, value):
-        """Met à jour le label de taille"""
+        """Update the size label text."""
         scale = value / 100.0
         self.size_label.setText(f"{scale:.1f}x")
     
     def _on_reset(self):
-        """Réinitialise TOUT aux valeurs du thème courant + scale 1"""
-        # reset couleurs (thème courant)
+        """Reset everything to current theme values and scale 1."""
+        # reset colors (current theme)
         if self._current_theme is not None:
             self.settings_manager.reset_theme_colors(self._current_theme)
-        # reset taille joueur
+        # reset player size
         self.settings_manager.player_scale = 1.0
-        # recharge les widgets
+        # reload widgets
         self._load_current_settings()

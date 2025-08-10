@@ -1,3 +1,12 @@
+"""
+UI components for selecting and filtering match actions.
+
+Provides:
+- `ActionFilterBar`: top-of-timeline filter and selection of action types
+- `ActionSelectionDialog`: modal dialog to choose up to N action types
+- `MatchActionsDialog`: list of actions with click-to-jump behavior
+- `create_nav_button`: helper for standardized navigation buttons
+"""
 # match_actions.py
 
 from PyQt5.QtWidgets import (
@@ -9,7 +18,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont
 
 class ActionFilterBar:
-    """Barre de filtrage des actions au-dessus de la timeline"""
+    """Filter bar to pick action types and toggle their visibility on timeline."""
     
     def __init__(self, actions_data, update_callback):
         self.actions_data = actions_data
@@ -17,14 +26,14 @@ class ActionFilterBar:
         self.action_buttons = {}
         self.layout = QHBoxLayout()
         self.available_types = {}
-        self.selected_action_types = []  # Aucun sélectionné par défaut
-        self.active_button_states = {}  # Mémorise l'état des boutons
+        self.selected_action_types = []  # None selected by default
+        self.active_button_states = {}  # Remember button states
         
         self._analyze_actions()
         self._create_ui()
         
     def _analyze_actions(self):
-        """Analyse toutes les actions disponibles"""
+        """Scan actions and build the set of available types with counts."""
         for act in self.actions_data:
             label = act['label']
             if label not in self.available_types:
@@ -37,57 +46,57 @@ class ActionFilterBar:
     def _create_ui(self):
         self.layout.addWidget(QLabel("Actions:"))
         
-        # Bouton de sélection des types d'actions
+        # Button to open action type selection
         self.select_button = QPushButton("Select Action Types")
         self.select_button.clicked.connect(self.open_selection_dialog)
         self.layout.addWidget(self.select_button)
         
-        # Séparateur
+        # Separator
         separator = QFrame()
         separator.setFrameShape(QFrame.VLine)
         separator.setFrameShadow(QFrame.Sunken)
         self.layout.addWidget(separator)
         
-        # Placeholder pour les boutons d'actions (insérer ici plus tard)
+        # Placeholder to insert action buttons after the separator
         self.buttons_start_index = self.layout.count()
         
         self.layout.addStretch()
         
-        # Bouton "All" - toujours présent mais désactivé par défaut
+        # "All" button – present but disabled until some types are selected
         self.all_button = QPushButton("All")
         self.all_button.setCheckable(True)
         self.all_button.setChecked(False)
-        self.all_button.setEnabled(False)  # Désactivé tant qu'aucune action n'est sélectionnée
+        self.all_button.setEnabled(False)  # Disabled until some types are selected
         self.all_button.clicked.connect(self.toggle_all)
         self.layout.addWidget(self.all_button)
     
     def open_selection_dialog(self):
         dialog = ActionSelectionDialog(self.select_button.parent(), self.available_types)
         
-        # Pré-sélectionner les types actuels
+        # Pre-select current types
         dialog.set_selected_types(self.selected_action_types)
         
         if dialog.exec_() == QDialog.Accepted:
             new_selection = dialog.get_selected_types()
             
-            # Sauvegarder l'état actuel des boutons actifs avant de les supprimer
+            # Save current active button states before we rebuild
             current_active_states = {}
             for action_type, btn in self.action_buttons.items():
                 current_active_states[action_type] = btn.isChecked()
             
-            # Mettre à jour la liste des types sélectionnés
+            # Update the list of selected types
             self.selected_action_types = new_selection
             
-            # Mettre à jour les états mémorisés
+            # Update remembered states
             for action_type in new_selection:
                 if action_type not in self.active_button_states:
-                    # Nouveau type : désactivé par défaut
+                    # New type: off by default
                     self.active_button_states[action_type] = False
                 elif action_type in current_active_states:
-                    # Type existant : garder son état actuel
+                    # Existing type: keep current on/off
                     self.active_button_states[action_type] = current_active_states[action_type]
             
-            # Supprimer les états des types qui ne sont plus sélectionnés
+            # Drop states for types that are no longer selected
             self.active_button_states = {
                 k: v for k, v in self.active_button_states.items() 
                 if k in new_selection
@@ -95,19 +104,19 @@ class ActionFilterBar:
             
             self._update_filter_buttons()
             
-            # Activer le bouton "All" si des actions sont sélectionnées
+            # Enable "All" if some types are selected
             self.all_button.setEnabled(len(self.selected_action_types) > 0)
             
             self.update_callback()
     
     def _update_filter_buttons(self):
-        """Met à jour les boutons de filtre selon la sélection"""
+        """Rebuild filter buttons according to the current selection."""
         # Supprimer les anciens boutons
         for btn in self.action_buttons.values():
             btn.deleteLater()
         self.action_buttons.clear()
         
-        # Créer les nouveaux boutons pour les types sélectionnés
+        # Create the new buttons for selected types
         for i, action_type in enumerate(self.selected_action_types):
             if action_type in self.available_types:
                 emoji = self.available_types[action_type]['emoji']
@@ -115,34 +124,34 @@ class ActionFilterBar:
                 btn = QPushButton(f"{emoji} {action_type} ({count})")
                 btn.setCheckable(True)
                 
-                # Utiliser l'état mémorisé (désactivé par défaut pour les nouveaux)
+                # Use remembered state (off by default for new types)
                 is_checked = self.active_button_states.get(action_type, False)
                 btn.setChecked(is_checked)
                 
                 btn.clicked.connect(self._on_action_button_clicked)
                 self.action_buttons[action_type] = btn
                 
-                # Insérer depuis la gauche (après le séparateur)
+                # Insert from the left (after the separator)
                 insert_position = self.buttons_start_index + i
                 self.layout.insertWidget(insert_position, btn)
     
     def _on_action_button_clicked(self):
-        """Gestionnaire pour les clics sur les boutons d'action"""
-        # Mettre à jour les états mémorisés
+        """Toggle a single action type and sync the 'All' button state."""
+        # Update remembered states
         for action_type, btn in self.action_buttons.items():
             self.active_button_states[action_type] = btn.isChecked()
         
-        # Mettre à jour le bouton "All" selon l'état des boutons individuels
-        if self.action_buttons:  # S'assurer qu'il y a des boutons
+        # Toggle the "All" button depending on individual states
+        if self.action_buttons:  # ensure there are buttons
             all_checked = all(btn.isChecked() for btn in self.action_buttons.values())
             self.all_button.setChecked(all_checked)
         
         self.update_callback()
     
     def toggle_all(self):
-        """Active/désactive tous les boutons d'action"""
+        """Enable/disable all selected action types at once."""
         if not self.selected_action_types:
-            # Si aucune action n'est sélectionnée, désactiver le bouton "All"
+            # If no types are selected, keep "All" disabled
             self.all_button.setChecked(False)
             return
         
@@ -155,16 +164,16 @@ class ActionFilterBar:
         self.update_callback()
     
     def get_active_types(self):
-        """Retourne les types d'actions actuellement actifs"""
+        """Return currently active (checked) action types."""
         return [t for t, btn in self.action_buttons.items() if btn.isChecked()]
     
     def get_filtered_actions(self):
-        """Retourne les actions filtrées"""
+        """Return actions matching the active types."""
         active_types = self.get_active_types()
         return [a for a in self.actions_data if a['label'] in active_types]
 
 class ActionSelectionDialog(QDialog):
-    """Dialog pour sélectionner les types d'actions à afficher"""
+    """Dialog to select up to a maximum number of action types."""
     
     def __init__(self, parent, all_action_types):
         super().__init__(parent)
@@ -179,11 +188,11 @@ class ActionSelectionDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Instructions
-        info_label = QLabel(f"Select up to {self.MAX_SELECTIONS} action types to display:")
+        info_label = QLabel(f"Select up to {self.MAX_SELECTIONS} action types :")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
-        # Zone de sélection avec scroll
+        # Scrollable selection area
         scroll_area = QScrollArea()
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
@@ -198,11 +207,11 @@ class ActionSelectionDialog(QDialog):
         scroll_area.setWidget(scroll_widget)
         layout.addWidget(scroll_area)
         
-        # Compteur
+        # Counter
         self.counter_label = QLabel("0/6 selected")
         layout.addWidget(self.counter_label)
         
-        # Boutons
+        # Buttons
         button_layout = QHBoxLayout()
         
         select_all_btn = QPushButton("Select All")
@@ -228,7 +237,7 @@ class ActionSelectionDialog(QDialog):
         self.counter_label.setText(f"{selected_count}/{self.MAX_SELECTIONS} selected")
         
         if selected_count > self.MAX_SELECTIONS:
-            # Trouver le dernier coché et le décocher
+            # Find the last checked one and uncheck it
             sender = self.sender()
             if sender and sender.isChecked():
                 sender.setChecked(False)
@@ -236,7 +245,7 @@ class ActionSelectionDialog(QDialog):
                                   f"You can only select up to {self.MAX_SELECTIONS} action types.")
                 return
         
-        # Désactiver les autres checkboxes si limite atteinte
+                    # Disable other checkboxes if limit reached
         for cb in self.checkboxes.values():
             if not cb.isChecked():
                 cb.setEnabled(selected_count < self.MAX_SELECTIONS)
@@ -264,9 +273,9 @@ class ActionSelectionDialog(QDialog):
             cb.setChecked(action_type in types)
         self.on_checkbox_changed()
 
-# Conserver les autres classes inchangées
+        # Keep other classes unchanged
 class MatchActionsDialog(QDialog):
-    """Dialog amélioré pour afficher les actions du match"""
+    """Dialog to display actions and jump to selected ones on click."""
     
     def __init__(self, parent, actions, home_team_name, goto_callback):
         super().__init__(parent)
@@ -307,7 +316,7 @@ class MatchActionsDialog(QDialog):
         self.goto_callback(frame, activate_timeline)
 
 def create_nav_button(label, width, height, frames, tooltip, callback):
-    """Crée un bouton de navigation standardisé"""
+    """Create a standardized navigation button bound to a frame jump."""
     btn = QPushButton(label)
     btn.setFixedWidth(width)
     btn.setFixedHeight(height)

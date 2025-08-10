@@ -1,3 +1,15 @@
+"""
+Global configuration and constants for the application.
+
+This module defines:
+- Project paths (code, project root, SVG, data)
+- File names for Floodlight XML inputs (positions, match info, events)
+- Visual and pitch geometry constants
+- A dynamic configuration singleton (`CONFIG`) that scales UI-dependent sizes
+- Time and UI constants (FPS, timeline sizes)
+
+Only metadata and constants are defined here; no runtime logic.
+"""
 # config.py
 
 from PyQt5.QtCore import Qt
@@ -9,10 +21,10 @@ PROJECT_ROOT = os.path.dirname(CODE_DIR)
 SVG_DIR = os.path.join(PROJECT_ROOT, "svgs/")
 DATA_PATH = os.path.join(PROJECT_ROOT, "data/")
 
-MATCH_ID = "J03WPY"
-FILE_NAME_POS = f"DFL_04_03_positions_raw_observed_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
-FILE_NAME_INFOS = f"DFL_02_01_matchinformation_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
-FILE_NAME_EVENTS = f"DFL_03_02_events_raw_DFL-COM-000002_DFL-MAT-{MATCH_ID}.xml"
+MATCH_ID = "J03WN1"
+FILE_NAME_POS = f"DFL_04_03_positions_raw_observed_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_INFOS = f"DFL_02_01_matchinformation_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
+FILE_NAME_EVENTS = f"DFL_03_02_events_raw_DFL-COM-000001_DFL-MAT-{MATCH_ID}.xml"
 
 # Panel size
 LEFT_PANEL_SIZE = 1200  
@@ -35,12 +47,17 @@ PENALTY_SPOT_DIST = 11
 
 
 
-# ===== VALEURS DE BASE (non scalées) =====
-PLAYER_OUTER_RADIUS_BASE = 1.6  # Valeur de référence pour scale = 1.0
-
-# Ces valeurs sont maintenant des propriétés qui dépendront du scale
+# ===== Base values (unscaled) =====
+PLAYER_OUTER_RADIUS_BASE = 1.6  # reference value when scale = 1.0
+ 
+# The following values become properties depending on the scale
 class DynamicConfig:
-    """Classe pour gérer les valeurs de configuration dynamiques"""
+    """Holds dynamic, scale-dependent visual constants.
+
+    The `scale` property controls derived sizes (player radii, arrow widths,
+    trajectory line widths, etc.). Set `CONFIG.scale` to adjust the UI scale
+    globally without touching call sites.
+    """
     
     _instance = None
     _scale = 1.0
@@ -94,10 +111,10 @@ class DynamicConfig:
     def OFFSIDE_LINE_WIDTH(self):
         return 5/16 * self.PLAYER_OUTER_RADIUS
 
-# Instance globale
+# Global instance
 CONFIG = DynamicConfig()
 
-# Pour la compatibilité avec le code existant, on crée des fonctions
+# For compatibility with existing code, provide function accessors
 def get_player_outer_radius():
     return CONFIG.PLAYER_OUTER_RADIUS
 
@@ -125,7 +142,7 @@ def get_trajectory_ball_line_width():
 def get_offside_line_width():
     return CONFIG.OFFSIDE_LINE_WIDTH
 
-# Valeurs statiques (ne changent pas avec le scale)
+# Static values (do not change with scale)
 PLAYER_ROTATION_OFFSET_DEG = 270
 PLAYER_ROTATION_DEFAULT_DEG = 90
 PLAYER_CHEVRON_ANGLE_DEG = 150

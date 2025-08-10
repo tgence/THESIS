@@ -1,4 +1,10 @@
-# player_selection_dialog.py - Version finale corrigée avec design pitch_widget
+"""
+Player selection dialog for associating arrows to players.
+
+Provides circular player buttons styled like the pitch representation and a
+dialog that lists Home and Away players for quick selection.
+"""
+# Player selection dialog styled like `PitchWidget`
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
@@ -9,7 +15,7 @@ from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPainterPath
 from config import *
 
 class PlayerCircleButton(QPushButton):
-    """Bouton joueur avec design identique à pitch_widget"""
+    """Circular player button visually matching pitch player design."""
     def __init__(self, player_id, player_number, main_color, sec_color, num_color, parent=None):
         super().__init__(parent)
         self.player_id = player_id
@@ -39,7 +45,7 @@ class PlayerCircleButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Paramètres du cercle (identiques à pitch_widget)
+        # Circle parameters (mirrors pitch_widget style)
         center_x, center_y = 25, 25
         outer_radius = 20
         inner_radius = 15
@@ -55,20 +61,20 @@ class PlayerCircleButton(QPushButton):
         painter.drawPie(center_x - outer_radius, center_y - outer_radius,
                        outer_radius * 2, outer_radius * 2, 180 * 16, 180 * 16)
         
-        # Cercle intérieur (couleur principale)
+        # Inner circle (main color)
         painter.setBrush(QBrush(self.main_color))
         painter.drawEllipse(center_x - inner_radius, center_y - inner_radius,
                           inner_radius * 2, inner_radius * 2)
         
-        # Contour de sélection si sélectionné
+        # Selection ring if selected
         if self.is_selected:
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(QColor("#39C6FF"), 2))  # bleu clair, épaisseur 2
+            painter.setPen(QPen(QColor("#39C6FF"), 2))  # light blue, width 2
             painter.drawEllipse(center_x - outer_radius - 2, center_y - outer_radius - 2, 
                             (outer_radius + 2) * 2, (outer_radius + 2) * 2)
 
         
-        # Numéro du joueur
+        # Player number
         painter.setPen(QPen(self.num_color))
         font = QFont("Arial", 12, QFont.Bold)
         painter.setFont(font)
@@ -80,7 +86,7 @@ class PlayerCircleButton(QPushButton):
         self.update()
 
 class ArrowPlayerSelection(QDialog):
-    """Dialogue pour sélectionner un joueur avec design identique pitch_widget"""
+    """Dialog to pick a player (Home/Away) with pitch-like visuals."""
     playerSelected = pyqtSignal(str, str)  # player_id, player_text
     
     def __init__(self, home_players, away_players, title="Select Player", parent=None):
@@ -94,9 +100,9 @@ class ArrowPlayerSelection(QDialog):
         self.selected_player_text = None
         self.player_buttons = []
         
-        # Récupérer les couleurs des équipes pour les labels
-        self.home_main_color = "#4CAF50"  # Vert par défaut
-        self.away_main_color = "#F44336"  # Rouge par défaut
+        # Grab team colors for labels
+        self.home_main_color = "#4CAF50"  # default green
+        self.away_main_color = "#F44336"  # default red
         
         if home_players:
             first_home_player = next(iter(home_players.values()))
@@ -149,11 +155,11 @@ class ArrowPlayerSelection(QDialog):
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
         
-        # Container pour les équipes
+        # Teams container
         teams_layout = QHBoxLayout()
         teams_layout.setSpacing(30)
         
-        # Équipe Home
+        # Home team
         home_frame = QFrame()
         home_layout = QVBoxLayout(home_frame)
         home_layout.setSpacing(10)
@@ -182,13 +188,13 @@ class ArrowPlayerSelection(QDialog):
         home_layout.addLayout(home_grid)
         teams_layout.addWidget(home_frame)
         
-        # Séparateur vertical
+        # Vertical separator
         separator = QFrame()
         separator.setFrameShape(QFrame.VLine)
         separator.setStyleSheet("color: #666;")
         teams_layout.addWidget(separator)
         
-        # Équipe Away
+        # Away team
         away_frame = QFrame()
         away_layout = QVBoxLayout(away_frame)
         away_layout.setSpacing(10)
@@ -234,7 +240,7 @@ class ArrowPlayerSelection(QDialog):
             }
         """)
         
-        # Bouton "No Player" pour permettre de ne sélectionner personne
+        # "No Player" button to allow clearing the association
         no_player_button = QPushButton("No Player")
         no_player_button.clicked.connect(self._select_no_player)
         no_player_button.setStyleSheet("""
@@ -281,7 +287,7 @@ class ArrowPlayerSelection(QDialog):
         self.selected_player_text = player_text
         self.ok_button.setEnabled(True)
         
-        # Mettre à jour l'affichage de tous les boutons
+        # Refresh selected ring across all buttons
         for btn in self.player_buttons:
             btn.set_selected(btn.player_id == player_id)
     
@@ -290,11 +296,11 @@ class ArrowPlayerSelection(QDialog):
         self.selected_player_id = None
         self.selected_player_text = "No Player"
         
-        # Désélectionner tous les boutons
+        # Clear all selection rings
         for btn in self.player_buttons:
             btn.set_selected(False)
         
-        # Fermer immédiatement
+        # Close the dialog immediately
         self.accept()
     
     def accept(self):

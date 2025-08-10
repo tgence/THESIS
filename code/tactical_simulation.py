@@ -1,3 +1,9 @@
+"""
+Tactical simulation based on user-drawn arrows.
+
+Associates arrows with players and action types (pass/run/dribble), then
+computes simulated player and ball positions over a chosen interval.
+"""
 # tactical_simulation.py
 
 import numpy as np
@@ -6,7 +12,7 @@ from PyQt5.QtCore import QPointF
 from config import *
 
 class TacticalSimulationManager:
-    """Gère la simulation tactique basée sur les flèches dessinées"""
+    """Manage tactical associations and compute simulated trajectories."""
     
     def __init__(self, annotation_manager, pitch_widget, home_ids, away_ids, home_colors, away_colors):
         self.annotation_manager = annotation_manager
@@ -16,22 +22,22 @@ class TacticalSimulationManager:
         self.home_colors = home_colors
         self.away_colors = away_colors
         
-        # Données tactiques
-        self.tactical_arrows = []  # Flèches avec joueurs associés
-        self.ball_possession_chain = []  # Chaîne de passes
+        # Tactical data
+        self.tactical_arrows = []  # arrows with associated players
+        self.ball_possession_chain = []  # pass chain
         self.player_associations = {}  # {arrow_id: player_id}
         self.pass_receivers = {}  # {arrow_id: receiver_player_id} pour les passes
         
-        # Trajectoires simulées
+        # Simulated trajectories
         self.simulated_player_positions = {}  # {player_id: [(x, y, frame), ...]}
         self.simulated_ball_positions = []  # [(x, y, frame), ...]
         
     def associate_arrow_with_player(self, arrow, player_id, current_frame, xy_objects):
-        """Associe une flèche à un joueur (appelé manuellement)"""
+        """Associate a drawn arrow with a player at a given frame."""
         arrow_id = id(arrow)
         self.player_associations[arrow_id] = player_id
         
-        # Créer l'objet tactical_arrow
+        # Create the tactical_arrow object
         tactical_arrow = {
             'arrow': arrow,
             'arrow_id': arrow_id,
@@ -52,8 +58,8 @@ class TacticalSimulationManager:
         return "associated"
     
     def set_pass_receiver(self, receiver_player_id):
-        """Définit le receveur d'une passe"""
-        # Trouver la dernière passe sans receveur
+        """Define the pass receiver for the most recent unassigned pass arrow."""
+        # Find the most recent pass without a receiver
         for tactical_arrow in reversed(self.tactical_arrows):
             if (tactical_arrow['action_type'] == 'pass' and 
                 'receiver_id' not in tactical_arrow):
@@ -62,7 +68,7 @@ class TacticalSimulationManager:
                 self.pass_receivers[arrow_id] = receiver_player_id
                 tactical_arrow['receiver_id'] = receiver_player_id
                 
-                # Ajouter à la chaîne de possession
+                # Add to possession chain
                 self.ball_possession_chain.append({
                     'from_player': tactical_arrow['player_id'],
                     'to_player': receiver_player_id,
@@ -73,17 +79,17 @@ class TacticalSimulationManager:
         return False
     
     def get_action_type(self, arrow):
-        """Détermine le type d'action selon le style de flèche"""
+        """Infer action type from arrow style (solid=pass, dotted=run, zigzag=dribble)."""
         if hasattr(arrow, 'arrow_style'):
             style = arrow.arrow_style
             if style == "dotted":
-                return 'run'  # Pointillés = course
+                return 'run'  # Dotted = run
             elif style == "zigzag":
                 return 'dribble'  # Zigzag = dribble
             else:
                 return 'pass'  # Solid = passe
         
-        # Fallback: analyser les items graphiques
+        # Fallback: inspect child items if style attribute is missing
         if hasattr(arrow, 'childItems') and arrow.childItems():
             for item in arrow.childItems():
                 if hasattr(item, 'pen'):
@@ -92,11 +98,11 @@ class TacticalSimulationManager:
                         return 'run'
                     break
         
-        # Par défaut, solid = passe
+        # Default to pass (solid)
         return 'pass'
     
     def calculate_arrow_length(self, points):
-        """Calcule la longueur totale d'une flèche"""
+        """Compute the total Euclidean length of an arrow polyline."""
         if len(points) < 2:
             return 0
         
@@ -109,7 +115,7 @@ class TacticalSimulationManager:
         return total_length
     
     def calculate_simulated_trajectories(self, interval_seconds, current_frame, xy_objects, n_frames, get_frame_data_func):
-        """Calcule les nouvelles positions selon les flèches tactiques"""
+        """Compute positions for players and ball over the simulation interval."""
         self.simulated_player_positions.clear()
         self.simulated_ball_positions.clear()
         
@@ -126,7 +132,7 @@ class TacticalSimulationManager:
             ball_xy = xy_objects[half]["Ball"].xy[idx]
             if len(ball_xy) >= 2 and not np.isnan(ball_xy[0]):
                 ball_current_pos = QPointF(ball_xy[0], ball_xy[1])
-                # Déterminer qui a le ballon initialement
+                # Determine who has the ball initially
                 ball_holder = self._find_closest_player_to_ball(ball_current_pos, current_frame, xy_objects, get_frame_data_func)
         except (IndexError, KeyError):
             pass
@@ -140,12 +146,12 @@ class TacticalSimulationManager:
             current_sim_frame = current_frame + frame_offset
             progress = frame_offset / max(1, total_frames - 1)
             
-            # Traiter les actions des joueurs selon la vitesse calculée
+            # Process player actions according to calculated speed
             for tactical_arrow in self.tactical_arrows:
                 player_id = tactical_arrow['player_id']
                 action_type = tactical_arrow['action_type']
                 
-                # Calculer la position du joueur selon sa flèche et la vitesse requise
+                # Calculate player position according to arrow and required speed
                 player_pos = self._calculate_player_position_with_speed(
                     tactical_arrow, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func
                 )
@@ -168,15 +174,15 @@ class TacticalSimulationManager:
                 ))
     
     def _calculate_player_position_with_speed(self, tactical_arrow, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Calcule la position d'un joueur en tenant compte de la vitesse requise"""
+        """Position a player along the arrow, capped by plausible action speed."""
         start_pos = tactical_arrow['start_pos']
         end_pos = tactical_arrow['end_pos']
         arrow_length = tactical_arrow['length']
         
-        # Calculer la vitesse requise (mètres par seconde)
+        # Calculate required speed (meters per second)
         required_speed = arrow_length / interval_seconds
         
-        # Vitesse maximale réaliste selon le type d'action
+        # Realistic maximum speed according to action type
         max_speeds = {
             'run': 8.0,      # 8 m/s course rapide
             'dribble': 4.0,  # 4 m/s dribble
@@ -186,11 +192,11 @@ class TacticalSimulationManager:
         action_type = tactical_arrow['action_type']
         
         if action_type in max_speeds and max_speeds[action_type] > 0:
-            # Limiter la vitesse si nécessaire
+            # Limit speed if necessary
             max_allowed_speed = max_speeds[action_type]
             if required_speed > max_allowed_speed:
                 # Le joueur n'atteint pas la fin dans le temps imparti
-                # Il parcourt la distance qu'il peut à vitesse max
+                # He covers the distance he can at max speed
                 distance_covered = max_allowed_speed * interval_seconds * progress
                 total_distance = arrow_length
                 actual_progress = min(distance_covered / total_distance, 1.0)
@@ -200,14 +206,14 @@ class TacticalSimulationManager:
             # Pour les passes, utiliser le progress normal
             actual_progress = progress
         
-        # Interpolation le long de la flèche
+        # Interpolation along the arrow
         x = start_pos.x() + actual_progress * (end_pos.x() - start_pos.x())
         y = start_pos.y() + actual_progress * (end_pos.y() - start_pos.y())
         
         return QPointF(x, y)
     
     def _calculate_ball_position_with_speed(self, initial_ball_pos, initial_holder, passes, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Calcule la position de la balle avec vitesse de passe réaliste"""
+        """Compute ball position given pass speed and receiver path."""
         if not passes:
             # Pas de passe, la balle suit le porteur initial
             if initial_holder in self.simulated_player_positions:
@@ -217,19 +223,19 @@ class TacticalSimulationManager:
                     return QPointF(latest_pos[0], latest_pos[1])
             return initial_ball_pos
         
-        # Traiter les passes en séquence selon leur timing
+        # Process passes in sequence according to their timing
         current_pass = None
         pass_start_time = 0.0
         
-        # Pour simplicité, traiter la première passe
-        # TODO: Implémenter la logique séquentielle pour multiples passes
+                    # For simplicity, process the first pass
+            # TODO: Implement sequential logic for multiple passes
         first_pass = passes[0]
         
         if 'receiver_id' in first_pass:
             pass_length = first_pass['length']
             
-            # Vitesse de passe réaliste (15-25 m/s pour une passe normale)
-            pass_speed = min(25.0, max(15.0, pass_length / 2.0))  # Adaptée à la distance
+            # Realistic pass speed (15-25 m/s for a normal pass)
+            pass_speed = min(25.0, max(15.0, pass_length / 2.0))  # Adapted to distance
             pass_duration = pass_length / pass_speed
             
             # Convertir en proportion du temps total
@@ -249,13 +255,13 @@ class TacticalSimulationManager:
                     first_pass['receiver_id'], progress, interval_seconds, current_frame, xy_objects, get_frame_data_func
                 )
                 
-                # Interpoler la balle avec une trajectoire légèrement courbe
+                # Interpolate ball with slightly curved trajectory
                 x = passer_pos.x() + pass_progress * (receiver_pos.x() - passer_pos.x())
                 y = passer_pos.y() + pass_progress * (receiver_pos.y() - passer_pos.y())
                 
                 return QPointF(x, y)
             else:
-                # Passe terminée - la balle suit le receveur
+                # Pass completed - ball follows receiver
                 receiver_pos = self._get_player_position_at_progress(
                     first_pass['receiver_id'], progress, interval_seconds, current_frame, xy_objects, get_frame_data_func
                 )
@@ -264,8 +270,8 @@ class TacticalSimulationManager:
         return initial_ball_pos
     
     def _get_player_position_at_progress(self, player_id, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Obtient la position d'un joueur (simulée ou réelle) à un moment donné"""
-        # D'abord vérifier s'il y a une position simulée
+        """Return simulated or real player position at a given progress ratio."""
+        # First check if there's a simulated position
         if player_id in self.simulated_player_positions:
             positions = self.simulated_player_positions[player_id]
             if positions:
@@ -275,15 +281,15 @@ class TacticalSimulationManager:
                 latest_pos = positions[target_index]
                 return QPointF(latest_pos[0], latest_pos[1])
         
-        # Sinon, utiliser la position réelle
+        # Otherwise, use real position
         frame_to_check = current_frame + int(progress * interval_seconds * FPS)
         return self._get_real_player_position(player_id, frame_to_check, xy_objects, get_frame_data_func)
     
     def _get_real_player_position(self, player_id, frame, xy_objects, get_frame_data_func):
-        """Obtient la position réelle d'un joueur à une frame donnée"""
+        """Return real player position at a given global frame index."""
         half, idx, _ = get_frame_data_func(frame)
         
-        # Déterminer l'équipe du joueur
+        # Determine player's team
         side = "Home" if player_id in self.home_ids else "Away"
         ids = self.home_ids if side == "Home" else self.away_ids
         
@@ -298,10 +304,10 @@ class TacticalSimulationManager:
         except (ValueError, IndexError, KeyError):
             pass
         
-        return QPointF(0, 0)  # Position par défaut
+        return QPointF(0, 0)  # Default position
     
     def _find_closest_player_to_ball(self, ball_pos, frame, xy_objects, get_frame_data_func):
-        """Trouve le joueur le plus proche de la balle"""
+        """Find the player closest to the ball at a frame."""
         min_distance = float('inf')
         closest_player = None
         
@@ -320,7 +326,7 @@ class TacticalSimulationManager:
         return closest_player
     
     def find_player_at_position(self, click_pos, current_frame, xy_objects, get_frame_data_func, max_distance=PLAYER_OUTER_RADIUS_BASE):
-        """Trouve le joueur le plus proche d'une position de clic"""
+        """Find the nearest player to an arbitrary click position within a threshold."""
         min_distance = float('inf')
         closest_player = None
         
@@ -339,7 +345,7 @@ class TacticalSimulationManager:
         return closest_player
     
     def clear_tactical_data(self):
-        """Efface toutes les données tactiques"""
+        """Reset tactical associations and all simulated positions."""
         self.tactical_arrows.clear()
         self.ball_possession_chain.clear()
         self.player_associations.clear()
@@ -348,14 +354,14 @@ class TacticalSimulationManager:
         self.simulated_ball_positions.clear()
     
     def get_simulated_trajectories(self):
-        """Retourne les trajectoires simulées pour l'affichage"""
+        """Return simulated player and ball trajectories for rendering."""
         return {
             'players': self.simulated_player_positions,
             'ball': self.simulated_ball_positions
         }
     
     def get_non_associated_arrows(self):
-        """Retourne les flèches qui ne sont pas associées à des joueurs"""
+        """Return arrows that are not associated with any player."""
         associated_arrow_ids = {ta['arrow_id'] for ta in self.tactical_arrows}
         all_arrows = self.annotation_manager.arrows
         
@@ -367,11 +373,11 @@ class TacticalSimulationManager:
         return non_associated
     
     def get_associated_arrows(self):
-        """Retourne les flèches associées avec leurs informations tactiques"""
+        """Return a copy of associated arrows with their tactical metadata."""
         return self.tactical_arrows.copy()
     
     def remove_arrow_association(self, arrow):
-        """Supprime l'association d'une flèche avec un joueur"""
+        """Remove association for the specified arrow and clean related state."""
         arrow_id = id(arrow)
         
         # Supprimer de tactical_arrows
@@ -385,7 +391,7 @@ class TacticalSimulationManager:
         if arrow_id in self.pass_receivers:
             del self.pass_receivers[arrow_id]
         
-        # Supprimer de la chaîne de possession
+        # Remove from possession chain
         self.ball_possession_chain = [
             link for link in self.ball_possession_chain 
             if link['arrow_id'] != arrow_id

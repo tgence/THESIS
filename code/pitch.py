@@ -1,3 +1,10 @@
+"""
+Pitch rendering with PyQt GraphicsScene.
+
+`PitchWidget` draws the static field once and re-renders dynamic items
+(players, ball, overlays) every frame. It relies on size constants exposed via
+`CONFIG` so that visual scale can be adjusted globally.
+"""
 # pitch.py
 import numpy as np
 import math
@@ -14,6 +21,7 @@ from data_processing import get_pressure_color, build_ball_carrier_array
 from config import *
 
 class PitchWidget(QWidget):
+    """Graphics widget to display a soccer pitch and dynamic overlays."""
     def __init__(self, X_MIN, X_MAX, Y_MIN, Y_MAX, parent=None):
         super().__init__(parent)
         self.X_MIN = X_MIN
@@ -27,7 +35,7 @@ class PitchWidget(QWidget):
 
         self.pitch_items = []         # Objets statiques du terrain
         self.dynamic_items = []       # Objets dynamiques (joueurs, balles, lignes, etc)
-        self.annotation_items = []    # Annotations/flèches, gérés ailleurs
+        self.annotation_items = []    # Annotations/arrows, managed elsewhere
 
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene)
@@ -39,13 +47,13 @@ class PitchWidget(QWidget):
         self.draw_pitch()
 
     def clear_pitch(self):
-        """Efface les éléments du terrain (statiques)."""
+        """Remove static field items from the scene."""
         for item in self.pitch_items:
             self.scene.removeItem(item)
         self.pitch_items.clear()
 
     def clear_dynamic(self):
-        """Efface tous les éléments dynamiques (joueurs, balles, lignes, etc)."""
+        """Remove dynamic items (players, ball, lines, overlays)."""
         for item in self.dynamic_items:
             try:
                 scene = item.scene()
@@ -57,16 +65,16 @@ class PitchWidget(QWidget):
 
         
     def draw_pitch(self):
-        """Dessine le terrain en utilisant uniquement les clés du thème compatibles : terrain + line."""
+        """Draw the field using current theme colors (grass and lines)."""
         self.clear_pitch()
-        # Récupère les couleurs du thème (fallback si clé absente)
+        # Grab theme colors (fallback if key is missing)
         grass_color = self.theme.get("grass", "#08711a")
         line_color    = self.theme.get("line",    "#FFFFFF")
 
         brush = QBrush(QColor(grass_color))
         pen   = QPen(QColor(line_color), LINE_WIDTH)
 
-        ### Herbe + terrain principal
+        # Grass + main field rectangle
         grass = QGraphicsRectItem(
             self.X_MIN - 2*SCENE_EXTRA_GRASS,
             self.Y_MIN - SCENE_EXTRA_GRASS,
@@ -85,7 +93,7 @@ class PitchWidget(QWidget):
         field.setZValue(-10)
         self.pitch_items.append(field)
 
-        ### Lignes externe / médiane
+        # Outer lines and halfway line
         self.pitch_items.append(self.scene.addLine(self.X_MIN, self.Y_MIN, self.X_MIN, self.Y_MAX, pen))
         self.pitch_items.append(self.scene.addLine(self.X_MAX, self.Y_MIN, self.X_MAX, self.Y_MAX, pen))
         self.pitch_items.append(self.scene.addLine(self.X_MIN, self.Y_MIN, self.X_MAX, self.Y_MIN, pen))
@@ -96,7 +104,7 @@ class PitchWidget(QWidget):
             pen
         ))
 
-        ### Cercle central
+        # Center circle
         center_x = self.X_MIN + self.PITCH_LENGTH/2
         center_y = self.Y_MIN + self.PITCH_WIDTH/2
         self.pitch_items.append(self.scene.addEllipse(
@@ -106,7 +114,7 @@ class PitchWidget(QWidget):
             pen
         ))
 
-        ### Point central
+        # Center spot
         dot = self.scene.addEllipse(
             center_x - POINT_RADIUS,
             center_y - POINT_RADIUS,
@@ -115,7 +123,7 @@ class PitchWidget(QWidget):
         )
         self.pitch_items.append(dot)
 
-        ### Points de penalty
+        # Penalty spots
         left_spot = self.scene.addEllipse(
             self.X_MIN + PENALTY_SPOT_DIST - POINT_RADIUS,
             center_y - POINT_RADIUS,
@@ -130,7 +138,7 @@ class PitchWidget(QWidget):
         )
         self.pitch_items.extend([left_spot, right_spot])
 
-        ### Surfaces de penalty et but
+        # Penalty areas and goal areas
         self.pitch_items.append(self.scene.addRect(
             self.X_MIN,
             self.Y_MIN + (self.PITCH_WIDTH - PENALTY_AREA_WIDTH)/2,
@@ -160,7 +168,7 @@ class PitchWidget(QWidget):
             pen
         ))
 
-        ### Buts
+        # Goals (posts area)
         self.pitch_items.append(self.scene.addRect(
             self.X_MIN - GOAL_DEPTH,
             self.Y_MIN + (self.PITCH_WIDTH - GOAL_WIDTH)/2,
@@ -174,10 +182,10 @@ class PitchWidget(QWidget):
             pen
         ))
 
-        ### Arcs de penalty
+        # Penalty arcs
         arc_radius = 9.15
 
-        # Arc gauche
+        # Left arc
         left_arc = QGraphicsPathItem()
         path_l = QPainterPath()
         path_l.arcMoveTo(
@@ -197,7 +205,7 @@ class PitchWidget(QWidget):
         self.scene.addItem(left_arc)
         self.pitch_items.append(left_arc)
 
-        # Arc droit
+        # Right arc
         right_arc = QGraphicsPathItem()
         path_r = QPainterPath()
         path_r.arcMoveTo(
@@ -233,12 +241,13 @@ class PitchWidget(QWidget):
     def draw_player(self, x, y, main_color, sec_color, num_color, number, 
                 angle=0, velocity=0, display_orientation=False, z_offset=10, 
                 arrow_color=None):
+        """Draw a bi-color player disc with optional orientation arrow."""
     
-        # Utiliser la couleur du thème si arrow_color n'est pas fourni
+        # Use theme color if arrow_color is not provided
         if arrow_color is None:
             arrow_color = self.theme.get("arrow", "#000000")
         
-        # Récupérer les dimensions depuis CONFIG (déjà scalées !)
+        # Fetch scaled dimensions from CONFIG
         radius = CONFIG.PLAYER_OUTER_RADIUS
         inner_radius = CONFIG.PLAYER_INNER_RADIUS
         arrow_thickness = CONFIG.PLAYER_ARROW_THICKNESS
@@ -330,6 +339,7 @@ class PitchWidget(QWidget):
 
 
     def draw_ball(self, x, y, color=None):
+        """Draw the ball at (x, y)."""
         if color is None:
             color = BALL_COLOR
         
@@ -346,6 +356,7 @@ class PitchWidget(QWidget):
 
 
     def draw_offside_line(self, x_offside, visible=True, color=None):
+        """Draw vertical offside line at x coordinate if visible and defined."""
         if not visible:
             return None
         
@@ -361,13 +372,13 @@ class PitchWidget(QWidget):
             return line
 
 
-    def draw_pressure_zone(self, x, y, color, radius=None, opacity=0.5):
+    def draw_pressure(self, x, y, color, radius=None, opacity=0.5):
         """
-        Dessine un cercle translucide pour représenter une "zone de pression".
-        - x, y : coordonnées du centre (en mètres, comme tout le reste)
-        - radius : rayon en mètres (si None, utilise CONFIG.PLAYER_OUTER_RADIUS)
-        - color : code couleur (hex ou rgba)
-        - opacity : (float) 0-1
+        Draw a translucent circle to represent a pressure area.
+        - x, y: center in meters
+        - radius: meters (defaults to ~player size)
+        - color: hex or rgba
+        - opacity: 0..1
         """
         if radius is None:
             radius = CONFIG.PLAYER_OUTER_RADIUS * 2  # Zone plus large que le joueur
@@ -384,7 +395,7 @@ class PitchWidget(QWidget):
         return ellipse
         
 
-    def draw_pressure_zone_for_ball_carrier(
+    def draw_pressure_for_ball_carrier(
         self,
         xy_objects,
         home_ids,
@@ -400,24 +411,24 @@ class PitchWidget(QWidget):
         frame_number=0,
         visible=True,
     ):
-        """
-        Affiche la zone de pression autour du porteur S'IL Y EN A UN ET SI LA BALLE EST ACTIVE.
-        La couleur varie selon la pression, le rayon reste fixe.
+        """Draw pressure zone around the ball carrier if ball is active.
+
+        The color encodes pressure intensity while radius remains fixed.
         """
         if not visible:
             return None
 
-        # Ne rien dessiner si la balle est inactive à ce frame
+        # Do not draw anything if the ball is inactive at this frame
         if isinstance(ballstatus, dict):
             # Structure Floodlight standard : ballstatus['firstHalf'].code, etc.
-            # On doit concaténer comme pour possession
+            # Concatenate halves similar to possession
             n_first = xy_objects['firstHalf']['Home'].xy.shape[0]
             if frame_number < n_first:
                 ball_active = ballstatus['firstHalf'].code[frame_number] != 0
             else:
                 ball_active = ballstatus['secondHalf'].code[frame_number - n_first] != 0
         elif isinstance(ballstatus, np.ndarray) or isinstance(ballstatus, list):
-            # ballstatus est déjà aplati
+            # ballstatus already flat
             ball_active = ballstatus[frame_number] != 0
         else:
             # Cas pourri mais on ne crash pas
@@ -453,5 +464,5 @@ class PitchWidget(QWidget):
         i = (home_ids if carrier_side=="Home" else away_ids).index(carrier_pid)
         x, y = xy[2*i], xy[2*i+1]
 
-        self.draw_pressure_zone(x, y, color=color)
+        self.draw_pressure(x, y, color=color)
         return press_int

@@ -1,3 +1,12 @@
+"""
+Timeline widgets: slider with hover preview and action markers.
+
+Contains:
+- `TimelineSlider`: QSlider with hover frame/time preview
+- `ActionMarker`: clickable emoji marker for an action
+- `TimelineWidget`: slider + markers + zoomed overlay with action context
+- `ZoomedMarkersWidget`: floating strip showing nearby actions
+"""
 # slider.py
 
 from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
@@ -9,6 +18,7 @@ import sys
 
 
 class TimelineSlider(QSlider):
+    """Slider that shows a hover preview line and time tooltip."""
     hoverFrameChanged = pyqtSignal(int, str)  # frame, time_str
     def __init__(self, n_frames_firstHalf, n_frames_secondHalf, parent=None):
         super().__init__(Qt.Horizontal, parent)
@@ -58,7 +68,7 @@ class TimelineSlider(QSlider):
         if self.hover_pos is not None and self.hover_frame is not None:
             current_value = self.value()
             
-            # === BARRE ENTRE CURSEURS (fonctionne) ===
+            # Preview bar between real cursor and hover cursor
             real_pos = (current_value / self.maximum()) * self.width() if self.maximum() > 0 else 0
             hover_pos = self.hover_pos
             
@@ -73,40 +83,41 @@ class TimelineSlider(QSlider):
                 painter.setPen(QPen(Qt.NoPen))
                 painter.drawRect(int(start_x), bar_y, int(end_x - start_x), TIMELINE_GROOVE_HEIGHT)
             
-            # === LIGNE DU CURSEUR IMAGINAIRE ===
+            # Imaginary cursor line at hover position
             preview_pen = QPen(QColor(33, 150, 243, 120), 1)
             painter.setPen(preview_pen)
             painter.drawLine(self.hover_pos, 0, self.hover_pos, self.height())
             
-            # === TOOLTIP À LA MÊME HAUTEUR QUE LE TEMPS EN BAS À GAUCHE ===
+            # Tooltip at the same height as the time label in the bottom-left
             current_hover_time = format_match_time(self.hover_frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS)
             
-            font = QFont("Arial", 11)  # Même taille que le temps en bas à gauche
+            font = QFont("Arial", 11)  # same size as the bottom-left time label
             painter.setFont(font)
             fm = painter.fontMetrics()
             text_width = fm.width(current_hover_time)
             text_height = fm.height()
             
-            # Position à côté du curseur, même hauteur que le temps réel
-            tooltip_x = self.hover_pos + 10  # 10px à droite du curseur
-            tooltip_y = 15  # Même hauteur que le test rouge qui marche
+            # Next to the hover cursor, same height as real time label
+            tooltip_x = self.hover_pos + 10  # 10px to the right of the cursor
+            tooltip_y = 15
             
-            # S'assurer qu'on reste dans les limites
+            # Keep the tooltip inside the widget bounds
             if tooltip_x + text_width > self.width() - 5:
-                tooltip_x = self.hover_pos - text_width - 10  # À gauche du curseur
+                tooltip_x = self.hover_pos - text_width - 10  # to the left of the cursor
             
-            # Fond du tooltip
+            # Tooltip background
             padding = 3
             painter.setBrush(QBrush(QColor(30, 30, 30, 200)))
             painter.setPen(QPen(QColor(33, 150, 243), 1))
             painter.drawRoundedRect(tooltip_x - padding, tooltip_y - text_height - padding + 3, 
                                 text_width + 2*padding, text_height + 2*padding, 3, 3)
             
-            # Texte du tooltip
+            # Tooltip text
             painter.setPen(QColor(255, 255, 255))
             painter.drawText(tooltip_x, tooltip_y, current_hover_time)
 
 class ActionMarker(QWidget):
+    """Small clickable widget that draws an emoji for an action."""
     clicked = pyqtSignal(int)
     def __init__(self, action_data, parent=None):
         super().__init__(parent)
@@ -122,15 +133,15 @@ class ActionMarker(QWidget):
             font = QFont("Arial", 14)
         painter.setFont(font)
 
-        # Surbrillance si sélectionné
+        # Highlight if selected
         parent = self.parentWidget()
         selected = False
         if parent is not None and hasattr(parent.parentWidget(), "selected_frame"):
             selected = self.action['frame'] == parent.parentWidget().selected_frame
         if selected:
-            size = self.width()  # Carré qui occupe tout le widget
-            painter.setBrush(QColor(33, 150, 243, 50))  # bleu semi-transparent
-            painter.setPen(QPen(QColor(33, 150, 243), 2))  # contour bleu fin
+            size = self.width()  # full-size square highlight
+            painter.setBrush(QColor(33, 150, 243, 50))  # semi-transparent blue
+            painter.setPen(QPen(QColor(33, 150, 243), 2))  # thin blue outline
             painter.drawRect(0, 0, size, size)
         else:
             painter.setPen(QColor(0, 0, 0, 50))
@@ -143,6 +154,7 @@ class ActionMarker(QWidget):
 
 
 class TimelineWidget(QWidget):
+    """Composite timeline with slider and action markers/zoom overlay."""
     frameChanged = pyqtSignal(int)
     def __init__(self, n_frames, n_frames_firstHalf, n_frames_secondHalf, parent=None):
         super().__init__(parent)
@@ -155,7 +167,7 @@ class TimelineWidget(QWidget):
         self.filtered_actions = []
         self.zoom_widget = None
         self.selected_frame = None
-        self.has_selected_types = False  # NOUVEAU: flag pour savoir si des types ont été sélectionnés
+        self.has_selected_types = False  # NEW: flag to know if types have been selected
 
         self._setup_ui()
 
@@ -169,7 +181,7 @@ class TimelineWidget(QWidget):
         timeline_width = max(MIN_TIMELINE_WIDTH, min(parent_width - margin_buttons, MAX_TIMELINE_WIDTH))
         self.setFixedWidth(timeline_width)
 
-        # Bar d'emojis
+        # Emoji bar
         self.markers_container = QWidget(self)
         self.markers_container.setMinimumHeight(50)
         self.markers_container.setMaximumHeight(50)
@@ -185,20 +197,20 @@ class TimelineWidget(QWidget):
         self.slider.valueChanged.connect(self.frameChanged.emit)
         layout.addWidget(self.slider)
         
-        # === Container pour le temps en bas à gauche (PLUS GRAND) ===
+        # === Container for the time label (bottom-left, larger) ===
         time_container = QWidget()
         time_container.setFixedHeight(30)
         time_layout = QHBoxLayout(time_container)
-        time_layout.setContentsMargins(0, 8, 0, 0)  # Plus d'espace vers le bas
+        time_layout.setContentsMargins(0, 8, 0, 0)  # extra bottom space
         
         self.time_label = QLabel("00:00")
         self.time_label.setAlignment(Qt.AlignLeft)
         self.time_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
-                font-size: 13px;                 /* PLUS GRAND */
+                font-size: 13px;                 /* larger */
                 font-family: Arial;
-                font-weight: 500;               /* Légèrement plus gras */
+                font-weight: 500;               /* slightly bolder */
                 background: transparent;
                 padding: 3px 6px;
             }
@@ -246,14 +258,14 @@ class TimelineWidget(QWidget):
 
 
     def show_zoomed_markers(self, center_frame, max_actions=10):
-        # Trie par ordre d'apparition (frame)
+        # Sort by chronological frame
         all_actions = sorted(self.filtered_actions, key=lambda a: a['frame'])
         idx = next((i for i, a in enumerate(all_actions) if a['frame'] == center_frame), None)
         if idx is None:
             self.hide_zoomed_markers()
             return
 
-        # Prend jusqu'à 4 avant, 5 après (centré, 10 max)
+        # Take up to 4 before and 5 after (centered, max 10)
         start = max(0, idx - 4)
         end = min(len(all_actions), idx + 6)
         actions_zoom = all_actions[start:end]
@@ -262,7 +274,7 @@ class TimelineWidget(QWidget):
             self.hide_zoomed_markers()
             return
 
-        # Toujours clean le widget précédent
+        # Always clean up previous zoom widget
         self.hide_zoomed_markers()
 
         self.zoom_widget = ZoomedMarkersWidget(actions_zoom, center_frame, self.n_frames, self)
@@ -288,20 +300,20 @@ class TimelineWidget(QWidget):
 
     def set_filtered_types(self, action_types):
         self.filtered_types = action_types
-        # NOUVEAU: Mettre à jour le flag pour savoir si des types ont été sélectionnés
+        # NEW: Update flag to know if types have been selected
         self.has_selected_types = len(action_types) > 0
         self.update_markers()
 
     def update_markers(self):
-        # MODIFIÉ: Ne filtrer les actions que si des types ont été explicitement sélectionnés
+        # MODIFIED: Only filter actions if types have been explicitly selected
         if self.has_selected_types:
-            # Si des types sont sélectionnés, filtrer selon ces types
+            # If types are selected, filter according to these types
             self.filtered_actions = [
                 a for a in self.actions_data
                 if a['label'] in self.filtered_types
             ]
         else:
-            # Si aucun type n'est sélectionné, ne rien afficher
+            # If no type is selected, display nothing
             self.filtered_actions = []
 
         # Nettoyage
@@ -312,7 +324,7 @@ class TimelineWidget(QWidget):
             if isinstance(child, QWidget):
                 child.deleteLater()
 
-        # MODIFIÉ: Créer les marqueurs seulement s'il y a des actions filtrées
+        # MODIFIED: Create markers only if there are filtered actions
         if self.filtered_actions:
             slider_width = max(1, self.markers_container.width())
             for action in self.filtered_actions:
@@ -347,6 +359,7 @@ class TimelineWidget(QWidget):
 
 
 class ZoomedMarkersWidget(QFrame):
+    """Floating overlay showing a small set of actions around a selected one."""
     emojiClicked = pyqtSignal(int)
     closeRequested = pyqtSignal()  # nouveau signal pour fermeture
     
@@ -370,7 +383,7 @@ class ZoomedMarkersWidget(QFrame):
         self.update()
 
     def eventFilter(self, obj, event):
-        # Gérer la perte de focus pour fermer automatiquement
+        # Handle focus loss to close automatically
         if event.type() == QEvent.WindowDeactivate:
             # Optionnel: fermer automatiquement quand on perd le focus
             # self.closeRequested.emit()
@@ -443,7 +456,7 @@ class ZoomedMarkersWidget(QFrame):
     def showEvent(self, event):
         """S'assurer que la fenêtre reste dans les limites de l'écran"""
         super().showEvent(event)
-        # Optionnel: ajuster la position si elle sort de l'écran
+        # Optional: adjust position if it goes off screen
         screen = QApplication.desktop().screenGeometry()
         if self.x() + self.width() > screen.width():
             self.move(screen.width() - self.width() - 10, self.y())

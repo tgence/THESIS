@@ -1,3 +1,9 @@
+"""
+Compact camera control widget for the tools panel.
+
+Lets users switch camera presets and control zoom; emits signals to the
+`CameraManager` held by the main window.
+"""
 # camera_controls.py
 
 from PyQt5.QtWidgets import (
@@ -8,7 +14,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 class CameraControlWidget(QWidget):
-    """Widget de contrôle de caméra compact pour le panneau droit"""
+    """Compact camera control widget with mode buttons and zoom controls."""
     
     # Signaux
     modeChanged = pyqtSignal(str)
@@ -33,11 +39,11 @@ class CameraControlWidget(QWidget):
         
         # === Groupe : Camera View ===
         camera_group = QGroupBox("Camera View")
-        camera_group.setMaximumHeight(250)  # Augmenté de 200 à 250 pour plus d'espace
+        camera_group.setMaximumHeight(250)  # slightly more space than before
         camera_layout = QVBoxLayout(camera_group)
         camera_layout.setSpacing(6)
         
-        # === Contrôles de Zoom ===
+        # === Zoom controls ===
         zoom_layout = QHBoxLayout()
         zoom_layout.setSpacing(3)
         
@@ -54,7 +60,7 @@ class CameraControlWidget(QWidget):
         zoom_layout.addWidget(self.zoom_in_btn)
         
         self.reset_zoom_btn = QPushButton("Reset")
-        self.reset_zoom_btn.setMaximumWidth(40)  # Réduit de 50 à 40
+        self.reset_zoom_btn.setMaximumWidth(40)  # compact reset button
         self.reset_zoom_btn.setMaximumHeight(25)
         self.reset_zoom_btn.setToolTip("Reset to Full View")
         self.reset_zoom_btn.setStyleSheet("font-size: 8px; padding: 2px;")  # Police plus petite
@@ -63,11 +69,11 @@ class CameraControlWidget(QWidget):
         zoom_layout.addStretch()
         camera_layout.addLayout(zoom_layout)
         
-        # === Boutons de Mode (Grid layout pour économiser l'espace) ===
+        # === Mode buttons (grid to save space) ===
         modes_layout = QGridLayout()
         modes_layout.setSpacing(2)
         
-        # Définir les boutons et leurs positions dans la grille (sans Full)
+        # Define buttons and their positions in the grid (no Full button)
         button_config = [
             ("ball", "Ball", 0, 0),
             ("top_left_corner", "TLC", 0, 1),
@@ -80,8 +86,8 @@ class CameraControlWidget(QWidget):
         
         for mode_key, display_name, row, col in button_config:
             btn = QPushButton(display_name)
-            btn.setMaximumWidth(55)  # Augmenté de 45 à 55
-            btn.setMaximumHeight(30)  # Augmenté de 25 à 30
+            btn.setMaximumWidth(55)
+            btn.setMaximumHeight(30)
             btn.setCheckable(True)
             btn.setContentsMargins(0, 0, 0, 0)  # Pas de marges du tout
             btn.setStyleSheet("""
@@ -94,7 +100,7 @@ class CameraControlWidget(QWidget):
             """)
             btn.clicked.connect(lambda checked, mode=mode_key: self.set_mode(mode))
             
-            # Tooltips avec noms complets (référentiel correct)
+            # Tooltips with full names
             tooltip_names = {
                 "ball": "Follow Ball",
                 "left_half": "Left Half",
@@ -113,17 +119,17 @@ class CameraControlWidget(QWidget):
         
         camera_layout.addLayout(modes_layout)
         
-        # === Info compacte ===
+        # === Compact info ===
         self.info_label = QLabel("")
         self.info_label.setStyleSheet("color: #888; font-size: 9px;")
         self.info_label.setWordWrap(True)
-        self.info_label.setMinimumHeight(40)  # Hauteur fixe pour éviter que les boutons bougent
+        self.info_label.setMinimumHeight(40)  # fixed to avoid layout jumps
         self.info_label.setMaximumHeight(40)
         camera_layout.addWidget(self.info_label)
         
         layout.addWidget(camera_group)
         
-        # Initialiser le mode par défaut (aucun bouton sélectionné)
+        # Start with default mode (no button selected)
         self.current_mode = "full"
         self._update_info()
     
@@ -136,7 +142,7 @@ class CameraControlWidget(QWidget):
     def set_mode(self, mode_key):
         """Change le mode de caméra"""
         if mode_key == "full":
-            # Mode full : aucun bouton sélectionné
+            # Full mode: no button checked
             self.current_mode = "full"
             for btn in self.mode_buttons.values():
                 btn.setChecked(False)
@@ -147,11 +153,11 @@ class CameraControlWidget(QWidget):
                 
             self.current_mode = mode_key
             
-            # Mettre à jour l'état des boutons (un seul actif à la fois)
+            # Update button states (single selection)
             for key, btn in self.mode_buttons.items():
                 btn.setChecked(key == mode_key)
                 
-                # Style spécial pour le bouton actif
+                # Special style for the active button
                 if key == mode_key:
                     if key == "ball":
                         btn.setStyleSheet("""
@@ -176,10 +182,10 @@ class CameraControlWidget(QWidget):
                 else:
                     btn.setStyleSheet("padding: 1px 2px; font-size: 10px;")
         
-        # Mettre à jour les informations
+        # Update info label
         self._update_info()
         
-        # Émettre le signal
+        # Emit modeChanged signal
         self.modeChanged.emit(mode_key)
     
     def _update_info(self):
@@ -204,7 +210,7 @@ class CameraControlWidget(QWidget):
         """Met à jour le statut de suivi de balle"""
         ball_btn = self.mode_buttons.get("ball")
         if ball_btn:
-            # Garder toujours "BALL" sans étoile
+            # Keep text as "BALL"; only tooltip reflects follow state
             ball_btn.setText("BALL")
             if is_following:
                 ball_btn.setToolTip("Currently following ball")

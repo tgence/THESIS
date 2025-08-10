@@ -1,5 +1,14 @@
 # data_processing.py
- 
+"""
+Data loading and transformation pipeline for Floodlight XML.
+
+Responsibilities:
+- Read positions, events, and match info XML files
+- Build team/player metadata, IDs, and color dictionaries
+- Compute DSAM metrics, player orientations, ball carrier per frame
+- Extract a curated list of match actions with frames and display labels
+- Provide time formatting helpers used in the UI
+"""
 import os
 import pandas as pd
 import numpy as np
@@ -12,11 +21,13 @@ from config import *
 from PyQt5.QtGui import QColor
 
 def safe_color(val, fallback='#aaaaaa'):
+    """Normalize strings into hex colors, falling back if invalid."""
     if isinstance(val, str) and (val.startswith('#') or len(val)==6):
         return val if val.startswith('#') else '#'+val
     return fallback
 
 def get_player_color_dict(df):
+    """Build {playerId: (main, secondary, number)} color mapping from team sheet."""
     d = {}
     for _, r in df.iterrows():
         pid = r['PersonId']
@@ -31,8 +42,8 @@ def get_player_color_dict(df):
 
 def compute_orientations(xy_data, player_ids, window_length=100, polyorder=2):
     """
-    Calcule et lisse l'orientation des joueurs, frame par frame.
-    Renvoie: dict[pid][frame_idx] = angle (float, en radians)
+    Compute and smooth player orientation (per frame).
+    Returns dict: pid -> list[angle_in_radians] across both halves.
     """
     orientations = {pid: [] for pid in player_ids['Home'] + player_ids['Away']}
     for half in ["firstHalf", "secondHalf"]:
@@ -42,14 +53,14 @@ def compute_orientations(xy_data, player_ids, window_length=100, polyorder=2):
             ids = player_ids[team]
             for j, pid in enumerate(ids):
                 traj = xy[:, 2*j:2*j+2]
-                # calcul brut frame à frame (nan-safe)
+                # raw frame-to-frame (nan-safe) differences
                 dx = np.diff(traj[:, 0], prepend=traj[0,0])
                 dy = np.diff(traj[:, 1], prepend=traj[0,1])
                 angles = np.arctan2(dy, dx)
-                # conversion périodique pour lissage
+                # convert to cos/sin for smoothing angles across wrap-around
                 cos_a = np.cos(angles)
                 sin_a = np.sin(angles)
-                # si trop court, skip smoothing
+                # If the series is too short, skip smoothing
                 if len(cos_a) < window_length:
                     angles_smooth = angles
                 else:
@@ -62,34 +73,27 @@ def compute_orientations(xy_data, player_ids, window_length=100, polyorder=2):
 
 def extract_dsam_from_xml(file_pos, player_ids, teamid_map, n_frames_per_half):
     """
-    Extrait D, S, A, M pour chaque joueur et chaque période (firstHalf, secondHalf...).
-    Pour chaque joueur et chaque période :
-      - Si pas de données : [nan]*n_frames
-      - Si données incomplètes : nan là où il n'y a pas de data
-    Args :
-        file_pos: chemin du xml
-        player_ids: {'Home': [...], 'Away': [...]}
-        teamid_map: {'Home': '...', 'Away': '...'}
-        n_frames_per_half: dict {'firstHalf': N1, 'secondHalf': N2, ...}
+    Extract D, S, A, M per player and per half from the positions XML.
+    Missing values are filled with NaN and arrays are sized to the half length.
     """
     import xml.etree.ElementTree as ET
     tree_pos = ET.parse(file_pos)
     root_pos = tree_pos.getroot()
     dsam = {'Home': {}, 'Away': {}}
 
-    # Initialisation de toutes les entrées à des nan
+    # Initialize all entries with NaNs
     for side in ['Home', 'Away']:
         for pid in player_ids[side]:
             dsam[side][pid] = {}
             for segment, n_frames in n_frames_per_half.items():
                 dsam[side][pid][segment] = {k: [np.nan]*n_frames for k in ['D', 'S', 'A', 'M']}
 
-    # Parcours du XML
+    # Walk through the XML
     for frameset in root_pos.findall('.//FrameSet'):
         team_id = frameset.get('TeamId')
         person_id = frameset.get('PersonId')
         segment = frameset.get('GameSection', 'unknown')
-        # Trouver le side (Home/Away)
+        # Determine the side (Home/Away)
         side = None
         for k, tid in teamid_map.items():
             if team_id == tid:
@@ -120,41 +124,14 @@ def extract_dsam_from_xml(file_pos, player_ids, teamid_map, n_frames_per_half):
 
     return dsam
 
-
-def build_player_out_frames(events_objects, fps, n_frames_firstHalf):
-    """
-    Retourne un dict {player_id: sortie_frame} pour Substitution Out (eID==19) ou Red Card (eID==6).
-    On travaille DIRECTEMENT avec events_objects[segment][team].events (DataFrame).
-    """
-    out_player_frames = {}
-    for segment, team_dict in events_objects.items():
-        # Calcule offset de frame selon la mi-temps
-        offset = 0
-        if segment.lower() in ["ht2", "secondhalf", "second_half", "second"]:
-            offset = n_frames_firstHalf
-
-        for team, events_obj in team_dict.items():
-            df = events_obj.events
-            # Substitution OUT = eID==19, Red Card = eID==6
-            mask = (df["eID"] == 19) | (df["eID"] == 6)
-            for _, row in df[mask].iterrows():
-                pid = str(row["pID"])
-                minute = row["minute"]
-                second = row["second"]
-                frame = int((minute * 60 + second) * fps) + offset
-                # On garde la 1ère sortie par joueur (minimum)
-                if pid not in out_player_frames or frame < out_player_frames[pid]:
-                    out_player_frames[pid] = frame
-    return out_player_frames
-
 def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
     """
-    Extrait les actions importantes avec le bon calcul de frame selon la mi-temps
+    Extract curated match actions with proper frame offsets per half.
     """
     ACTIONS = []
     
     for segment in events:
-        # Calcul de l'offset selon la mi-temps
+        # Compute offset based on the half
         frame_offset = 0
         if segment.lower() in ["secondhalf", "second_half", "ht2"]:
             frame_offset = n_frames_firstHalf
@@ -168,12 +145,12 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                 minute = int(row.get("minute", 0) or 0)
                 second = int(row.get("second", 0) or 0)
                 
-                # Frame avec offset selon la mi-temps
+                # Frame with half-dependent offset
                 frame = int((minute * 60 + second) * FPS) + frame_offset
                 
                 qualifier = row.get('qualifier', '')
                 
-                # Mapping des événements
+                # Event mapping to curated action labels/emojis
                 action_map = {
                     "ShotAtGoal_SuccessfulShot": {"label": "GOAL", "emoji": "⚽"},
                     "GoalKick_Play_Pass": {"label": "Goal Kick", "emoji": "🦶"},
@@ -187,7 +164,7 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                     "Offside": {"label": "Offside", "emoji": "❌"},
                     "OutSubstitution": {"label": "Substitution", "emoji": "🔄"},
                 }
-                # je veux verif s il y a pas deja la meme action au meme temps etc il faut faire une comparaison complete
+                # Deduplicate: avoid adding the same action at the same frame
                 if eid_str in action_map and not any(str(a['eID']) == eid_str and a['frame'] == frame for a in ACTIONS):
                     action = action_map[eid_str].copy()
                     action.update({
@@ -201,7 +178,7 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                     })
                     ACTIONS.append(action)
                 
-                # Cartons (logique spéciale)
+                # Cards (special handling)
                 elif eid_str in ["Caution", "6"]:
                     is_red = False
                     qual = None
@@ -235,15 +212,15 @@ def extract_match_actions_from_events(events, FPS=25, n_frames_firstHalf=0):
                     }
                     ACTIONS.append(action)
     
-    # Tri par frame
+    # Sort by frame
     ACTIONS = sorted(ACTIONS, key=lambda x: x["frame"])
     return ACTIONS
 
 def format_display_time(minute, second, segment):
     """
-    Formate le temps d'affichage selon la mi-temps avec gestion du temps additionnel
+    Format a display time (MM:SS [+ added time]) for a segment and raw time.
     """
-    # Temps de base selon la mi-temps
+    # Base minutes depend on the half
     if segment.lower() in ["firsthalf", "first_half", "ht1"]:
         base_minutes = 0
         half_duration = 45
@@ -251,13 +228,13 @@ def format_display_time(minute, second, segment):
         base_minutes = 45
         half_duration = 45
     else:
-        # Prolongations ou autres
+        # Extra time or other periods
         base_minutes = 90
         half_duration = 15
     
     total_minutes = base_minutes + minute
     
-    # Si on dépasse la durée normale de la mi-temps
+    # If we pass normal half duration, produce added time format
     if minute >= half_duration:
         extra_time_minutes = minute - half_duration
         return f"{base_minutes + half_duration}:00+{int(extra_time_minutes):02d}:{int(second):02d}"
@@ -267,8 +244,9 @@ def format_display_time(minute, second, segment):
 
 
 def load_data(path, file_pos, file_info, file_events):
+    """Load all Floodlight data and compute derived structures used by the app."""
 
-    # 1. Extraction floodlight (positions, etc.)
+    # 1. Floodlight extraction (positions, etc.)
     xy, possession, ballstatus, teamsheets, pitch = read_position_data_xml(
         os.path.join(path, file_pos),
         os.path.join(path, file_info)
@@ -295,18 +273,18 @@ def load_data(path, file_pos, file_info, file_events):
             d.update(team=team_name, side=side, shirtMainColor=main, shirtSecondaryColor=sec, shirtNumberColor=numc, TeamId=tid)
             rows.append(d)
     teams_df = pd.DataFrame(rows)
-    # 4. Filter joueurs + mapping IDs
+    # 4. Filter players + build ID mappings
     home_df = teams_df[teams_df.team==home_name]
     away_df = teams_df[teams_df.team==away_name]
     home_ids = home_df.PersonId.tolist()
     away_ids = away_df.PersonId.tolist()
     player_ids = {'Home': home_ids, 'Away': away_ids}
-    # Ajout TeamId pour chaque équipe
+    # Add TeamId per team for DSAM extraction
     teamid_map = {
         'Home': home_df.iloc[0]['TeamId'] if not home_df.empty else None,
         'Away': away_df.iloc[0]['TeamId'] if not away_df.empty else None
     }
-    # 5. Extraction D (distance)/S (speed)/A (acceleration)/M (minute) and number of frames per half + total
+    # 5. Extract D (distance)/S (speed)/A (acceleration)/M (minute) and compute frame counts per half/total
     n1 = xy['firstHalf']['Home'].xy.shape[0]
     n2 = xy['secondHalf']['Home'].xy.shape[0]
     ntot = n1 + n2
@@ -314,13 +292,13 @@ def load_data(path, file_pos, file_info, file_events):
     dsam = extract_dsam_from_xml(
         os.path.join(path, file_pos), player_ids, teamid_map, n_frames_per_half
     )
-    # 6. Autres traitements
+    # 6. Other transforms
     orientations = compute_orientations(xy, player_ids)
     home_colors = get_player_color_dict(home_df)
     away_colors = get_player_color_dict(away_df)
     id2num = dict(zip(teams_df.PersonId, teams_df['ShirtNumber']))
 
-    # 7. Ball carrier
+    # 7. Ball carrier per frame
     ball_carrier_array = build_ball_carrier_array(home_ids, away_ids, ntot, possession, xy)
     return {
         'xy_objects': xy, 'possession': possession, 'ballstatus': ballstatus,
@@ -344,11 +322,12 @@ def format_match_time(
     n_frames_overtime_secondHalf=None,
     fps=FPS
 ):
+    """Format global frame index into a match time string across periods."""
     periods = [
         ("FirstHalf", 0, n_frames_firstHalf, 0, LENGTH_FIRST_HALF),
         ("SecondHalf", n_frames_firstHalf, n_frames_firstHalf + n_frames_secondHalf, LENGTH_FIRST_HALF, LENGTH_FULL_TIME),
     ]
-    # Ajout des prolongations si elles existent
+    # Add overtime periods if present
     curr_start = n_frames_firstHalf + n_frames_secondHalf
     min_start = LENGTH_FULL_TIME
     if n_frames_overtime_firstHalf:
@@ -360,7 +339,7 @@ def format_match_time(
         curr_start += n_frames_overtime_secondHalf
         min_start += LENGTH_OVERTIME_HALF
 
-    # Trouve la période du frame
+    # Find which period this frame belongs to
     for label, start_f, end_f, min_start, min_end in periods:
         if start_f <= frame_idx < end_f:
             rel_frame = frame_idx - start_f
@@ -370,10 +349,10 @@ def format_match_time(
             if min_ < min_end:
                 return f"{min_:02d}:{sec_:02d}"
             else:
-                # temps additionnel pour cette période
+                # Added time for this period
                 over = tot_sec - ((min_end - min_start) * 60)
                 return f"{min_end}:00 + {int(over // 60):02d}:{int(over % 60):02d}"
-    # Au-delà des prolongs
+    # Beyond extra time
     rel_frame = frame_idx - periods[-1][2]
     tot_sec = rel_frame / fps
     min_end = periods[-1][4]
@@ -386,19 +365,11 @@ def build_ball_carrier_array(
     home_ids, away_ids, n_frames, possession, xy_objects, distance_threshold=3.5
 ):
     """
-    Pour chaque frame, renvoie (pid, side) du porteur (joueur de l'équipe en possession le plus proche du ballon, si < seuil).
-    Sinon, None.
-    Args :
-        home_ids, away_ids : listes d'ID joueurs
-        n_frames : total frames
-        possession : array/list/Code par frame (0=personne, 1=Home, 2=Away)
-        xy_objects : floodlight xy (pour positions joueurs et balle)
-        distance_threshold : max mètres pour considérer le porteur (sinon None)
-    Returns :
-        frame_carrier : list of (pid, side) ou None
+    For each frame, return (pid, side) of the carrier (closest in-possession
+    player to the ball) if within `distance_threshold`, else (None, None).
     """
 
-    # Aplatit possession si nécessaire
+    # Flatten possession into a 1D array if needed
     if isinstance(possession, dict):  # floodlight format
         pos1 = possession['firstHalf'].code
         pos2 = possession['secondHalf'].code
@@ -408,7 +379,7 @@ def build_ball_carrier_array(
     else:
         possession_flat = np.array(possession)
 
-    # Récupère xy
+    # Get XY arrays for all players and the ball
     player_xy = {}
     for side, ids in [('Home', home_ids), ('Away', away_ids)]:
         arr = np.vstack([
@@ -442,7 +413,7 @@ def build_ball_carrier_array(
             if dist < min_dist:
                 min_dist = dist
                 pid_proche = pid
-        # Si trop loin, pas de porteur
+        # If too far, there is no ball carrier
         if pid_proche is not None and min_dist < distance_threshold:
             frame_carrier.append((pid_proche, side))
         else:
@@ -454,7 +425,7 @@ def build_ball_carrier_array(
 
 def get_pressure_color(pressure):
     """
-    Couleur linéaire entre vert (0) et violet (1), sans autres couleurs intermédiaires.
+    Map pressure in [0, 1] to a color ramp from green (0) to violet (1).
     """
     green = np.array([62, 207, 68])
     yellow = np.array([247, 182, 0])
@@ -476,23 +447,23 @@ def get_pressure_color(pressure):
 
 
 def compute_pressure(
-    ball_xy,              # tuple (x, y) de la balle à la frame considérée
-    carrier_pid,          # id du porteur de balle à la frame considérée
-    carrier_side,         # "Home" ou "Away", camp du porteur
-    home_ids,           # liste des IDs joueurs de l'équipe Home
-    away_ids,           # liste des IDs joueurs de l'équipe Away
-    xy_objects,           # structure contenant les positions (xy) des joueurs/balle
-    dsam,                 # structure contenant les vitesses (S), etc. des joueurs
-    orientations,         # dict donnant l’orientation de chaque joueur à chaque frame
-    half,                 # "firstHalf" ou "secondHalf"
-    idx,                  # index de la frame courante dans la mi-temps
-    t_threshold=1.2,      # seuil temps pour la probabilité de pressing (~temps d’accès max au porteur)
-    sigma=0.25,           # largeur de la sigmoïde pour convertir le tti en probabilité
-    max_speed=10.0,       # vitesse max supposée d’un défenseur (m/s)
-    speed_threshold=1.5   # vitesse minimale pour qu’un défenseur soit “pris en compte” (m/s)
+    ball_xy,              # tuple (x, y) of the ball at current frame
+    carrier_pid,          # id of the ball carrier at current frame
+    carrier_side,         # "Home" or "Away"
+    home_ids,             # list of Home player IDs
+    away_ids,             # list of Away player IDs
+    xy_objects,           # positions for players/ball
+    dsam,                 # speeds etc. for players
+    orientations,         # player orientation per frame
+    half,                 # "firstHalf" or "secondHalf"
+    idx,                  # index of current frame within the half
+    t_threshold=1.2,      # time threshold for pressing probability (s)
+    sigma=0.25,           # sigmoid width for probability mapping
+    max_speed=10.0,       # assumed defender max speed (m/s)
+    speed_threshold=1.5   # minimum speed to be considered (m/s)
 ):
     """
-    Calcule la pression défensive sur le porteur de balle (carrier_pid) au frame idx.
+    Compute defensive pressure around the ball carrier at the given frame.
     """
    # --- Position du porteur
     try:
@@ -504,7 +475,7 @@ def compute_pressure(
     except Exception as e:
         px, py = ball_xy
 
-    # Défenseurs
+    # Defenders list (opposite team of the carrier)
     res = []
     for pid in defenders_ids:
         try:
@@ -530,6 +501,6 @@ def compute_pressure(
             res.append(proba)
         except Exception as e:
             res.append(0)
-    # Pression globale
+    # Global pressure (complement of joint non-pressures)
     intensity = 1 - np.prod(1 - np.array(res))
     return float(np.clip(intensity, 0, 1))

@@ -1,3 +1,9 @@
+"""
+Properties popup for a selected arrow.
+
+Allows choosing color/width/style and selecting from/to players, with a small
+undo/redo stack for property changes.
+"""
 # arrow_properties.py
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
@@ -14,6 +20,7 @@ class PlayerCircleWidget(QWidget):
     clicked = pyqtSignal()
 
     def __init__(self, number, main_color, sec_color, num_color, parent=None):
+        """Small circular widget rendering a player's number and colors."""
         super().__init__(parent)
         self.number = str(number)
         self.main_color = QColor(main_color)
@@ -48,6 +55,7 @@ class ArrowProperties(QWidget):
     propertiesConfirmed = pyqtSignal()
 
     def __init__(self, parent=None):
+        """Create the properties popup with controls and signals wired."""
         super().__init__(parent)
         self.setWindowFlags(Qt.Dialog | Qt.Window)
         self.setWindowTitle("Arrow Properties") 
@@ -110,7 +118,7 @@ class ArrowProperties(QWidget):
         separator2.setFrameShape(QFrame.HLine)
         separator2.setStyleSheet("color: #666;")
         layout.addWidget(separator2)
-        # --- Propriétés ---
+        # --- Properties ---
         layout.addWidget(QLabel("Properties:"))
 
         color_layout = QHBoxLayout()
@@ -308,7 +316,7 @@ class ArrowProperties(QWidget):
                         self.from_player_widget.deleteLater()
                         self.from_player_widget = None
                     self.from_button.show()
-                    self.selected_from_player = None  # Important : remettre à None
+                    self.selected_from_player = None  # important: reset to None
                 else:
                     self._update_player_display("from", player_id)
                 self._save_state('from_player', old_value, player_id)
@@ -323,7 +331,7 @@ class ArrowProperties(QWidget):
                         self.to_player_widget.deleteLater()
                         self.to_player_widget = None
                     self.to_button.show()
-                    self.selected_to_player = None  # Important : remettre à None
+                    self.selected_to_player = None  # important: reset to None
                 else:
                     self._update_player_display("to", player_id)
                 self._save_state('to_player', old_value, player_id)
@@ -382,7 +390,7 @@ class ArrowProperties(QWidget):
         self.activateWindow()
 
     def _update_from_arrow(self, arrow):
-        # MAJ propriétés visuelles
+        # Sync visual properties
         if hasattr(arrow, 'arrow_color'):
             self.current_color = arrow.arrow_color
             self._set_color_button(arrow.arrow_color)
@@ -396,7 +404,7 @@ class ArrowProperties(QWidget):
             elif style == "zigzag":
                 self.style_buttons.button(2).setChecked(True)
         
-        # AJOUTE CETTE PARTIE : mise à jour du state des players
+        # Sync current players selection state
         # From Player
         from_player = getattr(arrow, "from_player", None)
         self.selected_from_player = from_player

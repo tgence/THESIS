@@ -1,5 +1,10 @@
 # main.py
+"""
+Application entry point and main window.
 
+`MainWindow` orchestrates data, rendering (pitch/overlays), timeline controls,
+annotations, tactical simulation, camera controls, and theme/settings.
+"""
 import os
 import sys
 import numpy as np
@@ -11,11 +16,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize, QRectF
 from PyQt5.QtGui import QColor, QIcon, QFont
 
-# Imports locaux
+# Local imports
 from pitch import PitchWidget
 from annotation.annotation import ArrowAnnotationManager
 from annotation.arrow.arrow_properties import ArrowProperties
-from data_processing import load_data, build_player_out_frames, extract_match_actions_from_events, format_match_time, compute_pressure
+from annotation.tactical_zones import TacticalZoneManager
+from annotation.zone_properties import ZoneProperties
+from data_processing import load_data, extract_match_actions_from_events, format_match_time, compute_pressure
 from trajectory import TrajectoryManager
 from match_actions import ActionFilterBar, create_nav_button
 from utils.frame_utils import FrameManager, PossessionTracker
@@ -31,7 +38,7 @@ from config import *
 from qt_material import apply_stylesheet
 
 
-# ======= CHARGEMENT CENTRALISÉ =======
+# ===== Centralized data loading =====
 data = load_data(
     DATA_PATH,
     FILE_NAME_POS,
@@ -60,19 +67,20 @@ n_frames_firstHalf = data['n1']
 n_frames_secondHalf= data['n2']
 n_frames           = data['ntot']
 last_positions     = {'Home': {pid: (np.nan, np.nan) for pid in home_ids}, 'Away': {pid: (np.nan, np.nan) for pid in away_ids}, 'Ball': (np.nan, np.nan)}
-player_out_frames  = build_player_out_frames(events, FPS, n_frames_firstHalf)
 
 X_MIN, X_MAX = pitch_info.xlim
 Y_MIN, Y_MAX = pitch_info.ylim
 
 
 def get_frame_data(frame_number):
+    """Tiny helper to map a global frame to (half, index, nice label)."""
     if frame_number < n_frames_firstHalf:
         return "firstHalf", frame_number, "1st Half"
     else:
         return "secondHalf", frame_number - n_frames_firstHalf, "2nd Half"
 
 def get_possession_for_frame(possession, half, frame_idx):
+    """Return "Home", "Away" or None for the given half-relative frame."""
     poss_val = possession[half].code[frame_idx]
     if poss_val == 1:
         return "Home"
@@ -82,6 +90,11 @@ def get_possession_for_frame(possession, half, frame_idx):
         return None
     
 def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, away_ids, teams_df, last_positions):
+    """Estimate a simple offside line X for the defending team.
+
+    This looks at non-keeper defenders and returns the extremal X (max for Home,
+    min for Away) using last known positions if current is NaN.
+    """
     defending_team = "Home" if possession_team == "Away" else "Away"
     player_ids_team = home_ids if defending_team == "Home" else away_ids
     team_name = teams_df[teams_df['PersonId'] == player_ids_team[0]]['team'].iloc[0]
@@ -111,6 +124,7 @@ def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, a
     return max(x_coords) if defending_team == "Home" else min(x_coords)
 
 class MainWindow(QWidget):
+    """Main application window for Tactikz with timeline and tools panels."""
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Tactikz")
@@ -118,22 +132,22 @@ class MainWindow(QWidget):
 
         # Managers
         self.frame_manager = FrameManager(n_frames_firstHalf, n_frames_secondHalf, n_frames)
-        self.trajectory_manager = None  # Initialisé après pitch_widget
+        self.trajectory_manager = None  # Initialized after pitch_widget
         self.annotation_manager = None
         self.tactical_manager = None  # Gestionnaire de simulation tactique
         self.theme_mgr = ThemeManager(use_petroff=True,
                                       cr_target=3.0,
                                       de_min=20.0)
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
-        self.camera_manager = None  # Initialisé après pitch_widget
+        self.camera_manager = None  # Initialized after pitch_widget
         self.settings_manager = SettingsManager()
         self.settings_dialog = None
         self._settings_signal_connection = None
 
-        # Menu contextuel pour flèches
+        # Context menu for arrows
         self.arrow_context_menu = None
         
-        # État
+        # State
         self.simulation_mode = False
         self.is_playing = False
         self.frame_step = 1
@@ -157,7 +171,7 @@ class MainWindow(QWidget):
 
 
     def _setup_ui(self):
-        """Configure l'interface utilisateur"""
+        """Build the main layout: score/theme row, pitch, filters, and timeline."""
         main_layout = QHBoxLayout(self)
         
         # Panel gauche
@@ -168,14 +182,14 @@ class MainWindow(QWidget):
         left_container.setLayout(left_panel)
 
         score_layout = QHBoxLayout()
-        score_layout.setSpacing(16)  # espace plus large pour lisibilité
+        score_layout.setSpacing(16)  # wider spacing for readability
 
-        # SCORE à gauche
+        # SCORE on the left
         self.score_label = QLabel()
         self.score_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self._update_score_display(0)
         self.score_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
-        score_layout.addWidget(self.score_label)  # priorité + large
+        score_layout.addWidget(self.score_label)  # priority + large
 
         # Spacer flexible (prend tout l’espace restant)
         score_layout.addStretch(1)
@@ -194,7 +208,7 @@ class MainWindow(QWidget):
         # Encore un petit spacer pour respirer
         score_layout.addSpacing(8)
 
-        # Bouton "Visual Settings" TOUT À DROITE
+        # "Visual Settings" button ALL THE WAY TO THE RIGHT
         self.settings_button = QPushButton("Visual Settings")
         self.settings_button.setToolTip("Visual Settings")
         self.settings_button.clicked.connect(self._show_settings)
@@ -212,10 +226,10 @@ class MainWindow(QWidget):
         self.action_filter = ActionFilterBar(self.actions_data, self._on_filter_update)
         left_panel.addLayout(self.action_filter.layout)
         
-        # Timeline et contrôles
+        # Timeline and controls
         self._create_timeline_controls(left_panel)
         
-        # Panel droit (outils) - SIMPLIFIÉ
+        # Right panel (tools) - SIMPLIFIED
         tools_panel = self._create_tools_panel()
 
         
@@ -223,7 +237,7 @@ class MainWindow(QWidget):
         main_layout.addLayout(tools_panel)
     
     def _update_score_display(self, frame):
-        """Met à jour l'affichage du score"""
+        """Update the score label with team colors and current score at frame."""
         home_score, away_score = self.score_manager.get_score_at_frame(frame)
         home_main_color = home_colors[home_ids[0]][0]
         away_main_color = away_colors[away_ids[0]][0]
@@ -259,7 +273,7 @@ class MainWindow(QWidget):
 
     
     def _create_timeline_controls(self, parent_layout):
-        """Crée les contrôles de timeline"""
+        """Create timeline slider, nav buttons, speed, play/pause, and overlays."""
         control_layout = QHBoxLayout()
         nav_layout = QHBoxLayout()
         nav_layout.addWidget(create_nav_button("< 1m", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, -60 * FPS, "Back 1 minute", self.jump_frames))
@@ -356,17 +370,17 @@ class MainWindow(QWidget):
         self.offside_action.setChecked(True)
         overlays_menu.addAction(self.offside_action)
 
-        # Pressure zone
-        self.pressure_zone_action = QAction("Pressure zone (Ball Carrier)", self, checkable=True)
-        self.pressure_zone_action.setChecked(True)
-        overlays_menu.addAction(self.pressure_zone_action)
+        # Pressure
+        self.pressure_action = QAction("Pressure (Ball Carrier)", self, checkable=True)
+        self.pressure_action.setChecked(True)
+        overlays_menu.addAction(self.pressure_action)
 
         self.visual_overlays_button.setMenu(overlays_menu)
         control_layout.addWidget(self.visual_overlays_button)
         
         self.orientation_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
         self.offside_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
-        self.pressure_zone_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
+        self.pressure_action.toggled.connect(lambda _: self.update_scene(self.timeline_widget.value()))
 
         # Info label
         self.info_label = QLabel("")
@@ -382,7 +396,7 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.next_frame)
     
     def _create_tools_panel(self):
-        """Crée le panneau d'outils SIMPLIFIÉ"""
+        """Build the right tools panel (simulation, trajectories, annotation)."""
         tools_panel = QVBoxLayout()
         
         # Simulation mode
@@ -393,7 +407,7 @@ class MainWindow(QWidget):
         tools_panel.addWidget(self.simulation_button)
         
         self.sim_interval_spin = QDoubleSpinBox()
-        self.sim_interval_spin.setRange(1.0, 30.0)
+        self.sim_interval_spin.setRange(1.0, 60.0)
         self.sim_interval_spin.setValue(10.0)
         self.sim_interval_spin.setSuffix(" sec")
         self.sim_interval_spin.setSingleStep(0.5)
@@ -417,7 +431,7 @@ class MainWindow(QWidget):
         self.simulation_info.setStyleSheet("color: #888; font-size: 10px;")
         tools_panel.addWidget(self.simulation_info)
         
-        # Annotation tools - SIMPLIFIÉ
+        # Annotation tools - SIMPLIFIED
         tools_panel.addWidget(QLabel("────────────────"))
         tools_panel.addWidget(QLabel("Annotation"))
         
@@ -437,42 +451,62 @@ class MainWindow(QWidget):
         self.curve_button.clicked.connect(lambda: self.set_tool_mode("curve"))
         tools_panel.addWidget(self.curve_button)
         
+        # Zone tools
+        tools_panel.addWidget(QLabel("────────────────"))
+        tools_panel.addWidget(QLabel("Tactical Zones"))
+        
+        self.rectangle_zone_button = QPushButton("Rectangle Zone")
+        self.rectangle_zone_button.setCheckable(True)
+        self.rectangle_zone_button.clicked.connect(lambda: self.set_tool_mode("rectangle_zone"))
+        tools_panel.addWidget(self.rectangle_zone_button)
+        
+        self.ellipse_zone_button = QPushButton("Ellipse Zone")
+        self.ellipse_zone_button.setCheckable(True)
+        self.ellipse_zone_button.clicked.connect(lambda: self.set_tool_mode("ellipse_zone"))
+        tools_panel.addWidget(self.ellipse_zone_button)
+        
         tools_panel.addStretch(1)
         
         return tools_panel
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        # Nothing custom yet; placeholder in case we need responsive tweaks
 
 
 
 
 
     def _setup_managers(self):
-        """Initialise les managers"""
+        """Create managers (trajectory, annotation, tactical, camera) and UI hooks."""
         self.trajectory_manager = TrajectoryManager(self.pitch_widget, home_colors, away_colors)
         self.annotation_manager = ArrowAnnotationManager(self.pitch_widget.scene)
+        self.zone_manager = TacticalZoneManager(self.pitch_widget.scene)
         self.tactical_manager = TacticalSimulationManager(
             self.annotation_manager, self.pitch_widget, 
             home_ids, away_ids, home_colors, away_colors
         )
         self.camera_manager = CameraManager(self.pitch_widget)
         self.camera_control_widget = CameraControlWidget(self.camera_manager, self)
-        # Intégrer le widget caméra dans le panneau d'outils
+        # Integrate camera widget into the tools panel
         tools_layout = self.layout().itemAt(1).layout()  # Panel droit
         tools_layout.insertWidget(0, self.camera_control_widget)
         tools_layout.insertWidget(1, QLabel("────────────────"))
 
 
-        # Menu contextuel pour flèches
+        # Context menu for arrows
         self.arrow_context_menu = ArrowProperties(self)
         self._setup_arrow_context_menu()
+        
+        # Context menu for zones
+        self.zone_context_menu = ZoneProperties(self)
+        self._setup_zone_context_menu()
         
         self.set_tool_mode("select")
     
     def _setup_arrow_context_menu(self):
-        """Configure le menu contextuel des flèches"""
-        # Préparer les données des joueurs avec TOUTES les couleurs
+        """Prepare the arrow properties popup and wire its signals."""
+        # Prepare player data with ALL colors
         home_players = {}
         away_players = {}
         
@@ -494,17 +528,21 @@ class MainWindow(QWidget):
         
         self.arrow_context_menu.set_players_data(home_players, away_players)
         
-        # Connecter les signaux
+        # Connect signals
         self.arrow_context_menu.fromPlayerSelected.connect(self._on_from_player_selected)
         self.arrow_context_menu.toPlayerSelected.connect(self._on_to_player_selected)
         self.arrow_context_menu.deleteRequested.connect(self._on_arrow_delete_requested)
         self.arrow_context_menu.propertiesConfirmed.connect(self._on_arrow_properties_confirmed)
+        
+        # Connect zone signals
+        self.zone_context_menu.deleteRequested.connect(self._on_zone_delete_requested)
+        self.zone_context_menu.propertiesConfirmed.connect(self._on_zone_properties_confirmed)
     
     def _connect_signals(self):
-        """Connecte tous les signaux"""
+        """Connect UI controls, timer, and camera widget signals."""
         self.play_button.clicked.connect(self.toggle_play_pause)
         self.speed_box.currentIndexChanged.connect(self.update_speed)
-        # === NOUVEAUX : Signaux caméra ===
+        # === NEW: Camera signals ===
         self.camera_control_widget.modeChanged.connect(self._on_camera_mode_changed)
         self.camera_control_widget.zoomInRequested.connect(self._on_zoom_in)
         self.camera_control_widget.zoomOutRequested.connect(self._on_zoom_out)
@@ -522,13 +560,13 @@ class MainWindow(QWidget):
 
 
     def _on_filter_update(self):
-        """Callback pour mise à jour des filtres"""
+        """Refresh timeline markers when action type filters change."""
         active_actions = self.action_filter.get_filtered_actions()
         active_types = self.action_filter.get_active_types()
         self.timeline_widget.set_filtered_types(active_types)
 
     def toggle_simulation_mode(self):
-        """Active/désactive le mode simulation"""
+        """Turn tactical simulation mode on/off and (re)configure the loop."""
         self.simulation_mode = self.simulation_button.isChecked()
         if self.simulation_mode:
             self._pause_match()
@@ -554,13 +592,13 @@ class MainWindow(QWidget):
         self.update_scene(self.timeline_widget.value())
 
     def _update_loop_times_display(self):
-        """Met à jour l'affichage des temps de début/fin de loop"""
+        """Update the small label that shows the loop start and end times."""
         start_time = format_match_time(self.simulation_start_frame, n_frames_firstHalf, n_frames_secondHalf, 0, 0, fps=FPS)
         end_time = format_match_time(self.simulation_end_frame, n_frames_firstHalf, n_frames_secondHalf, 0, 0, fps=FPS)
         self.loop_times_label.setText(f"Loop: {start_time} → {end_time}")
 
     def update_simulation_interval(self, value):
-        """Met à jour l'intervalle de simulation et recalcule les limites"""
+        """Change the future interval (in seconds) and recompute loop bounds."""
         if self.simulation_mode:
             current_frame = self.simulation_start_frame
             interval_frames = int(value * FPS)
@@ -572,7 +610,7 @@ class MainWindow(QWidget):
                 self.update_scene(self.timeline_widget.value())
 
     def update_scene(self, frame_number):
-        """Met à jour la scène"""
+        """Redraw everything for the given global frame: pitch, players, ball, overlays."""
         self._update_score_display(frame_number)
         
         if (self.simulation_mode and 
@@ -630,7 +668,7 @@ class MainWindow(QWidget):
         ball_x, ball_y = ball_xy[0], ball_xy[1]
         self.pitch_widget.draw_ball(ball_x, ball_y, color=self.settings_manager.ball_color)
         
-        # === NOUVEAU : Mettre à jour la position de la balle dans le gestionnaire de caméra ===
+        # === NEW: Update ball position in camera manager ===
         self.camera_manager.update_ball_position(ball_x, ball_y)
         
         # Offside
@@ -638,10 +676,10 @@ class MainWindow(QWidget):
         offside_x = get_offside_line_x(xy_objects, half, idx, possession_team, 
                                     home_ids, away_ids, teams_df, last_positions)
         self.pitch_widget.draw_offside_line(offside_x, visible=self.offside_action.isChecked(), color=self.settings_manager.offside_color)
-        self.pitch_widget.draw_pressure_zone_for_ball_carrier(xy_objects, home_ids,
+        self.pitch_widget.draw_pressure_for_ball_carrier(xy_objects, home_ids,
                                                 away_ids, dsam, player_orientations, half, idx, ball_xy,
                                                 compute_pressure, ball_carrier_array, ballstatus=ballstatus, frame_number=frame_number,
-                                                visible=self.pressure_zone_action.isChecked(),
+                                                visible=self.pressure_action.isChecked(),
                 )
 
     
@@ -653,7 +691,7 @@ class MainWindow(QWidget):
         self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
 
     def _draw_players(self, half, idx):
-        """Dessine tous les joueurs"""
+        """Draw all players for the given half/index with colors, number, and orientation."""
         for side, ids, colors in [("Home", home_ids, home_colors), 
                                  ("Away", away_ids, away_colors)]:
             xy = xy_objects[half][side].xy[idx]
@@ -677,7 +715,7 @@ class MainWindow(QWidget):
                     continue
     
     def jump_frames(self, n):
-        """Navigation avec gestion simulation"""
+        """Jump forward/backward by N frames, respecting simulation loop rules."""
         if self.simulation_mode and self.is_playing:
             return
             
@@ -692,7 +730,7 @@ class MainWindow(QWidget):
             self._update_loop_times_display()
 
     def toggle_play_pause(self):
-        """Play/pause avec gestion spéciale pour simulation"""
+        """Toggle playback. In simulation, toggles the loop state text as well."""
         if self.is_playing:
             self.play_button.setIcon(self.play_icon)
             if self.simulation_mode:
@@ -711,11 +749,12 @@ class MainWindow(QWidget):
         self.is_playing = not self.is_playing
 
     def update_speed(self, idx):
+        """Set timer interval from speed combo (index -> ms)."""
         intervals = [160, 80, 40, 20, 10, 5]
         self.timer.setInterval(intervals[idx])
 
     def next_frame(self):
-        """Gestion des frames avec système de loop en simulation"""
+        """Advance playback by one step, looping if simulation loop is active."""
         current_frame = self.timeline_widget.value()
         
         if self.simulation_mode and self.simulation_loop_active:
@@ -733,28 +772,40 @@ class MainWindow(QWidget):
         self.timeline_widget.setValue(next_frame)
 
     def _pause_match(self):
+        """Pause playback if currently playing (helper used by tools)."""
         if self.is_playing:
             self.toggle_play_pause()
 
-    # Méthodes pour les annotations
+    # Annotation methods
     def set_tool_mode(self, mode):
+        """Switch between select/arrow/curve tools and update cursor + state."""
         self.current_tool = mode
         self.select_button.setChecked(mode == "select")
         self.arrow_button.setChecked(mode == "arrow")
         self.curve_button.setChecked(mode == "curve")
+        self.rectangle_zone_button.setChecked(mode == "rectangle_zone")
+        self.ellipse_zone_button.setChecked(mode == "ellipse_zone")
         self.pitch_widget.view.setCursor(Qt.ArrowCursor if mode == "select" else Qt.CrossCursor)
         
         if mode == "select":
             self.annotation_manager.try_finish_arrow()
+            self.zone_manager.cancel_zone()
         if mode in ("arrow", "curve"):
             self._pause_match()
+            self.zone_manager.set_mode("select")
+        if mode in ("rectangle_zone", "ellipse_zone"):
+            self._pause_match()
+            zone_type = "rectangle" if mode == "rectangle_zone" else "ellipse"
+            self.zone_manager.set_mode("create", zone_type)
+            self.annotation_manager.set_mode("select")
         
-        self.annotation_manager.set_mode(mode)
+        if mode not in ("rectangle_zone", "ellipse_zone"):
+            self.annotation_manager.set_mode(mode)
         self.pitch_widget.view.viewport().setFocus()
     
-    # Méthodes pour le menu contextuel des flèches
+    # Methods for arrow context menu
     def _on_from_player_selected(self, player_id):
-        """Joueur FROM sélectionné"""
+        """Handle selection of the origin player for the current arrow."""
         if self.arrow_context_menu.current_arrow:
             current_frame = self.timeline_widget.value()
             result = self.tactical_manager.associate_arrow_with_player(
@@ -762,77 +813,77 @@ class MainWindow(QWidget):
             )
     
     def _on_to_player_selected(self, player_id):
-        """Joueur TO sélectionné (receveur)"""
+        """Handle selection of the receiving player for a pass arrow."""
         success = self.tactical_manager.set_pass_receiver(player_id)
 
     
     def _on_arrow_color_changed(self, color):
-        """Couleur de flèche changée"""
+        """Change color of the selected arrow from the properties popup."""
         if self.arrow_context_menu.current_arrow:
             self.annotation_manager.selected_arrow = self.arrow_context_menu.current_arrow
             self.annotation_manager.set_color(color)
     
     def _on_arrow_width_changed(self, width):
-        """Largeur de flèche changée"""
+        """Change width of the selected arrow from the properties popup."""
         if self.arrow_context_menu.current_arrow:
             self.annotation_manager.selected_arrow = self.arrow_context_menu.current_arrow
             self.annotation_manager.set_width(width)
     
     def _on_arrow_style_changed(self, style):
-        """Style de flèche changé"""
+        """Change style (solid/dotted/zigzag) of the selected arrow."""
         if self.arrow_context_menu.current_arrow:
             self.annotation_manager.selected_arrow = self.arrow_context_menu.current_arrow
             self.annotation_manager.set_style(style)
-            # Mettre à jour le style stocké dans la nouvelle flèche
+            # Update the style stored in the new arrow
             if self.annotation_manager.selected_arrow:
                 self.annotation_manager.selected_arrow.arrow_style = style
-                # Mettre à jour la référence dans le menu contextuel
+                # Update the reference in the context menu
                 self.arrow_context_menu.current_arrow = self.annotation_manager.selected_arrow
     
     def _on_arrow_delete_requested(self):
-        """Suppression de flèche demandée"""
+        """Delete the currently selected arrow and clean its tactical links."""
         if self.arrow_context_menu.current_arrow:
             arrow = self.arrow_context_menu.current_arrow
-            # Supprimer de la liste des flèches
+            # Remove from the arrows list
             if arrow in self.annotation_manager.arrows:
                 self.annotation_manager.arrows.remove(arrow)
-            # Supprimer de la scène
+            # Remove from the scene
             try:
                 self.pitch_widget.scene.removeItem(arrow)
             except RuntimeError:
                 pass
-            # Supprimer l'association tactique si elle existe
+            # Remove tactical association if it exists
             self.tactical_manager.remove_arrow_association(arrow)
-            # Nettoyer la sélection
+            # Clear selection
             self.annotation_manager.clear_selection()
         self.arrow_context_menu.close()
     
-    # === NOUVEAUX : Gestionnaires d'événements caméra ===
+    # === NEW: Camera event handlers ===
     def _on_camera_mode_changed(self, mode):
-        """Gestionnaire pour changement de mode caméra"""
+        """Update camera preset when a mode button is clicked."""
         success = self.camera_manager.set_camera_mode(mode, animate=True)
         if success:
-            # Mettre à jour le statut de suivi de balle
+            # Update ball tracking status
             is_following = (mode == "ball")
             self.camera_control_widget.update_ball_status(is_following)
     
     def _on_zoom_in(self):
-        """Gestionnaire pour zoom avant"""
+        """Zoom in the pitch view slightly."""
         self.camera_manager.zoom_in(1.2)
     
     def _on_zoom_out(self):
-        """Gestionnaire pour zoom arrière"""
+        """Zoom out the pitch view slightly."""
         self.camera_manager.zoom_out(0.83)
     
     def _on_reset_zoom(self):
-        """Gestionnaire pour reset du zoom"""
+        """Reset camera to full pitch and sync the control widget state."""
         self.camera_manager.reset_zoom()
-        # AJOUTER CETTE LIGNE :
         self.camera_control_widget.set_mode("full")
 
     
     # Event handling
     def keyPressEvent(self, event):
+        """If a drawing tool is active, finish/cancel and return to Select on keypress."""
         if self.current_tool != "select":
             self.annotation_manager.try_finish_arrow()
             self.set_tool_mode("select")
@@ -842,33 +893,40 @@ class MainWindow(QWidget):
 
 
     def eventFilter(self, obj, event):
+        """Route mouse events to selection/creation logic depending on tool."""
         if obj != self.pitch_widget.view.viewport():
             return False
         
         if self.current_tool == "select":
-            # En mode sélection, gérer SEULEMENT les clics initiaux
+            # In select mode: handle only initial clicks
             if event.type() == QEvent.MouseButtonPress:
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())
                 clicked_arrow = self._find_arrow_at_position(scene_pos)
+                clicked_zone = self._find_zone_at_position(scene_pos)
                                 
                 if event.button() == Qt.LeftButton:
                     if clicked_arrow:
-                        # Simple clic gauche : sélectionner seulement
+                        # Simple left click: select only
                         self.annotation_manager.select_arrow(clicked_arrow)
                         # IMPORTANT: Ne pas retourner True ici pour permettre le drag
-                        return False  # Laisser Qt gérer le drag & drop
+                        return False  # Let Qt handle drag & drop
+                    elif clicked_zone:
+                        # Select zone
+                        self.zone_manager.select_zone(clicked_zone)
+                        return False  # Let Qt handle drag & drop
                     else:
-                        # Clic sur zone vide : désélectionner
+                        # Click on empty area: clear selection
                         self.annotation_manager.clear_selection()
-                        return True  # On peut intercepter ça
+                        self.zone_manager.clear_selection()
+                        return True  # We can intercept this
                         
                 elif event.button() == Qt.RightButton:
                     if clicked_arrow:
-                        # Clic droit : sélectionner ET ouvrir le menu des propriétés
+                        # Right click: select AND open properties menu
                         self.annotation_manager.select_arrow(clicked_arrow)
                         
                         global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
-                        # Ajuster la position pour éviter que le menu sorte de l'écran
+                        # Adjust position to keep menu within screen bounds
                         screen_geometry = QApplication.desktop().screenGeometry()
                         if global_pos.x() + 300 > screen_geometry.width():
                             global_pos.setX(global_pos.x() - 300)
@@ -877,12 +935,28 @@ class MainWindow(QWidget):
                         
                         self.arrow_context_menu.show_for_arrow(clicked_arrow, global_pos)
                         return True
+                    elif clicked_zone:
+                        # Right click: select zone AND open properties menu
+                        self.zone_manager.select_zone(clicked_zone)
+                        
+                        global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
+                        # Adjust position to keep menu within screen bounds
+                        screen_geometry = QApplication.desktop().screenGeometry()
+                        if global_pos.x() + 300 > screen_geometry.width():
+                            global_pos.setX(global_pos.x() - 300)
+                        if global_pos.y() + 500 > screen_geometry.height():
+                            global_pos.setY(global_pos.y() - 500)
+                        
+                        self.zone_context_menu.set_zone(clicked_zone)
+                        self.zone_context_menu.show()
+                        self.zone_context_menu.move(global_pos)
+                        return True
             
-            # IMPORTANT: Ne pas intercepter les événements de déplacement en mode select
-            # pour permettre le drag & drop des flèches sélectionnées
+            # IMPORTANT: Do not intercept move events in select mode
+            # to allow drag & drop of selected arrows
             return False
         
-        # Modes création de flèches (arrow/curve) - logique existante
+        # Arrow creation modes (arrow/curve) - existing logic
         if event.type() == QEvent.MouseButtonPress:
             if event.button() == Qt.LeftButton:
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())
@@ -901,19 +975,39 @@ class MainWindow(QWidget):
             scene_pos = self.pitch_widget.view.mapToScene(event.pos())
             self.annotation_manager.update_preview(scene_pos)
             return True
+            
+        # Zone creation modes (rectangle/ellipse)
+        if event.type() == QEvent.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+                self.zone_manager.add_point(scene_pos)
+                
+                if len(self.zone_manager.zone_points) == 2:
+                    self.zone_manager.finish_zone()
+                    self.set_tool_mode("select")
+            elif event.button() == Qt.RightButton:
+                if len(self.zone_manager.zone_points) < 2:
+                    self.zone_manager.cancel_zone()
+                    self.set_tool_mode("select")
+            return True
+        
+        elif event.type() == QEvent.MouseMove and self.zone_manager.zone_points:
+            scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            self.zone_manager.update_preview(scene_pos)
+            return True
         
         return False
     
     def _find_arrow_at_position(self, scene_pos):
-        """Trouve une flèche à la position donnée"""
-        # Rechercher dans les items de la scène avec une zone de tolérance
-        tolerance = 5.0  # Pixels de tolérance
+        """Look for an arrow item under the pointer within a small tolerance box."""
+        # Search scene items within a tolerance zone
+        tolerance = 5.0  # pixels tolerance
         search_rect = QRectF(scene_pos.x() - tolerance, scene_pos.y() - tolerance, 
                            tolerance * 2, tolerance * 2)
         items = self.pitch_widget.scene.items(search_rect)
         
         for item in items:
-            # Vérifier si l'item est une flèche ou fait partie d'une flèche
+            # Check if the item is an arrow or part of an arrow
             parent = item
             while parent:
                 if parent in self.annotation_manager.arrows:
@@ -921,15 +1015,49 @@ class MainWindow(QWidget):
                 parent = parent.parentItem()
         
         return None
+        
+    def _find_zone_at_position(self, scene_pos):
+        """Look for a zone item under the pointer within a small tolerance box."""
+        # Search scene items within a tolerance zone
+        tolerance = 5.0  # pixels tolerance
+        search_rect = QRectF(scene_pos.x() - tolerance, scene_pos.y() - tolerance, 
+                           tolerance * 2, tolerance * 2)
+        items = self.pitch_widget.scene.items(search_rect)
+        
+        for item in items:
+            # Check if the item is a zone or part of a zone
+            parent = item
+            while parent:
+                if parent in self.zone_manager.zones:
+                    return parent
+                parent = parent.parentItem()
+        
+        return None
 
 
     def _on_arrow_properties_confirmed(self):
-            """Confirmation des propriétés de flèche"""
-            # Le menu se fermera automatiquement
+            """Called when the properties popup is confirmed (no extra action needed)."""
+            # The menu will close automatically
             pass
+            
+    def _on_zone_delete_requested(self):
+        """Delete the currently selected zone and clean up."""
+        self.zone_manager.delete_selected_zone()
+        self.zone_context_menu.close()
+        
+    def _on_zone_properties_confirmed(self):
+        """Called when the zone properties popup is confirmed (no extra action needed)."""
+        # The menu will close automatically
+        pass
+        
+    def _setup_zone_context_menu(self):
+        """Setup the zone properties popup."""
+        # Zone properties are handled directly in the ZoneProperties widget
+        pass
     
     def on_theme_mode_changed(self, new_mode: str):
-        # Récupère les couleurs principales ET secondaires
+        """Regenerate theme given team colors and refresh the scene and settings UI."""
+        # Get primary and secondary colors
         home_main = home_colors[home_ids[0]][0] if home_ids and home_ids[0] in home_colors else "#FFFFFF"
         home_sec  = home_colors[home_ids[0]][1] if home_ids and home_ids[0] in home_colors and len(home_colors[home_ids[0]]) > 1 else "#CCCCCC"
         away_main = away_colors[away_ids[0]][0] if away_ids and away_ids[0] in away_colors else "#000000"
@@ -944,16 +1072,16 @@ class MainWindow(QWidget):
 
 
     def _show_settings(self):
-        """Affiche le dialog des paramètres"""
-        # Si la fenêtre existe encore et est visible, raise seulement
+        """Show (or focus) the non-modal Visual Settings dialog."""
+        # If the dialog already exists and is visible, just raise it
         if self.settings_dialog is not None and self.settings_dialog.isVisible():
             self.settings_dialog.raise_()
             self.settings_dialog.activateWindow()
             return
 
-        # Sinon, créer une nouvelle dialog
+        # Otherwise create a new dialog
         self.settings_dialog = SettingsDialog(self.settings_manager, self)
-        # Connecter le signal et garder une référence pour déconnexion
+        # Connect the signal and keep a reference to later disconnect
         if self._settings_signal_connection is not None:
             try:
                 self.settings_manager.settingsChanged.disconnect(self._settings_signal_connection)
@@ -965,7 +1093,8 @@ class MainWindow(QWidget):
         self.settings_dialog.show()
 
     def _on_settings_dialog_destroyed(self):
-        # Déconnecter le slot
+        """Disconnect temporary signals when the settings dialog is closed/destroyed."""
+        # Disconnect the slot
         if self._settings_signal_connection is not None:
             try:
                 self.settings_manager.settingsChanged.disconnect(self._settings_signal_connection)

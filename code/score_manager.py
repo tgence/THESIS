@@ -1,9 +1,12 @@
+"""
+Score extraction from events to display running score by frame.
+"""
 # score_manager.py
 
 from config import *
 
 class ScoreManager:
-    """Gère le calcul et l'affichage du score en temps réel"""
+    """Compute running score (home/away) at any frame using events."""
     
     def __init__(self, events, home_team_name, away_team_name, n_frames_firstHalf, fps=FPS):
         self.home_team_name = home_team_name
@@ -15,22 +18,22 @@ class ScoreManager:
         self._extract_goals(events)
     
     def _extract_goals(self, events):
-        """Extrait tous les goals avec leur frame et équipe depuis les événements"""
+        """Extract goals from events and store them with computed frame indices."""
         for segment in events:
-            # Calcul de l'offset selon la mi-temps
+            # Compute frame offset based on the half
             frame_offset = 0
             if segment.lower() in ["secondhalf", "second_half", "ht2"]:
                 frame_offset = self.n_frames_firstHalf
             
-            for team_key in events[segment]:  # team_key peut être "Home" ou "Away" ou nom d'équipe
+            for team_key in events[segment]:  # "Home"/"Away" or actual team name
                 df = events[segment][team_key].events
                 
-                # Filtrer les goals - utilise la même logique que extract_match_actions_from_events
+                # Detect goals (mirror extract_match_actions_from_events logic)
                 for _, row in df.iterrows():
                     eid = row.get('eID', None)
                     eid_str = str(eid) if eid is not None else ""
                     
-                    # Vérifier si c'est un goal (même logique que data_processing.py)
+                    # Check if it's a goal (same logic as in data_processing.py)
                     is_goal = (eid_str == "ShotAtGoal_SuccessfulShot" or 
                               eid_str == "1" or 
                               eid == 1)
@@ -42,7 +45,7 @@ class ScoreManager:
                         
                         self.goals.append({
                             'frame': frame,
-                            'team_key': team_key,  # "Home" ou "Away" ou nom d'équipe
+                            'team_key': team_key,
                             'minute': minute,
                             'second': second,
                             'segment': segment,
@@ -53,7 +56,7 @@ class ScoreManager:
         self.goals.sort(key=lambda x: x['frame'])
         
     def get_score_at_frame(self, frame):
-        """Retourne le score (home, away) à une frame donnée"""
+        """Return (home_score, away_score) at the provided global frame index."""
         home_score = 0
         away_score = 0
         
@@ -61,7 +64,7 @@ class ScoreManager:
             if goal['frame'] <= frame:
                 team_key = goal['team_key']
                 
-                # Essayer différentes correspondances
+                # Try different matches for team names vs Home/Away keys
                 is_home_goal = (
                     team_key == "Home" or 
                     team_key == self.home_team_name
@@ -80,5 +83,5 @@ class ScoreManager:
         return home_score, away_score
     
     def get_all_goals(self):
-        """Retourne tous les goals pour debugging"""
+        """Return all parsed goals (for debugging/inspection)."""
         return self.goals

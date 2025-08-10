@@ -1,3 +1,9 @@
+"""
+Arrow annotation management on the pitch scene.
+
+Supports straight/curved arrows, selection/move, and visual property updates.
+Used by tactical simulation to associate arrows to players and action types.
+"""
 # annotation.py
 
 from PyQt5.QtCore import Qt, QPointF
@@ -11,6 +17,7 @@ DEFAULT_ARROW_COLOR = "#000000"
 
 class ArrowAnnotationManager:
     def __init__(self, scene):
+        """Manage creation, preview, selection, and storage of arrow items."""
         self.scene = scene
         self.arrows = []
         self.arrow_points = []
@@ -50,12 +57,12 @@ class ArrowAnnotationManager:
         self.selected_arrow = None
 
     def select_arrow(self, arrow):
-        """Sélectionne une flèche spécifique"""
+        """Select a specific arrow and unselect others."""
         self.clear_selection()
         self.selected_arrow = arrow
         if arrow:
             arrow.setSelected(True)
-            # Mettre en évidence visuellement
+            # Visually emphasize selection (rectangle handled by item)
     
     def set_color(self, color):
         if self.selected_arrow:
@@ -148,7 +155,7 @@ class ArrowAnnotationManager:
     def draw_arrow(self, pts, preview=False):
         if len(pts) < 2:
             return None
-        # Note: preview ne gère ici que la transparence de couleur, le reste est le même
+        # Note: preview uses reduced alpha; geometry/styling is otherwise identical
         color = self.arrow_color
         width = self.arrow_width
         style = self.arrow_style
@@ -169,7 +176,7 @@ class ArrowAnnotationManager:
 
 
     def delete_last_arrow(self):
-        """Supprime la dernière flèche créée"""
+        """Delete the most recently created arrow from the scene and memory."""
         if self.arrows:
             arrow_item = self.arrows.pop()
             try:
@@ -179,7 +186,7 @@ class ArrowAnnotationManager:
         self.clear_selection()
 
 class CustomArrowItem(QGraphicsItemGroup):
-    """Flèche graphique avec rectangle de sélection coordonné"""
+    """Composite arrow item with a thin selection rectangle overlay."""
     def __init__(self, arrow_points, color, width, style, parent=None):
         super().__init__(parent)
         self.arrow_points = list(arrow_points)
@@ -222,7 +229,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         
         self._selection_rect = QGraphicsRectItem(rect_x, rect_y, rect_width, rect_height)
         
-        # CORRECTION 1: Couleur bleue et épaisseur fine
+        # Thin outline, using arrow color for the selection rectangle
         self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))  # Bleu fin
         self._selection_rect.setBrush(QBrush(Qt.NoBrush))  # Pas de remplissage
         self._selection_rect.setZValue(1000)
@@ -240,29 +247,29 @@ class CustomArrowItem(QGraphicsItemGroup):
         return self._selected_state
 
     def itemChange(self, change, value):
-        """CORRECTION 2: Logique de déplacement simplifiée"""
+        """Simplified move logic: update points then redraw without moving rect."""
         if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
             
-            # Calculer le delta de déplacement
+            # Calculate displacement delta
             old_pos = self.pos()
             new_pos = value
             delta = new_pos - old_pos
             
             
-            # Mettre à jour tous les points de la flèche
+            # Update all arrow points
             for i in range(len(self.arrow_points)):
                 old_point = self.arrow_points[i]
                 self.arrow_points[i] += delta
             
-            # Redessiner la flèche avec les nouveaux points
+            # Redraw arrow with new points
             self._draw_items_without_moving_rect()
             
             
         return super().itemChange(change, value)
 
     def _draw_items_without_moving_rect(self):
-        """CORRECTION 3: Redessine SEULEMENT la flèche, pas le rectangle"""
-        # Supprimer SEULEMENT les items de flèche
+        """Redraw only the arrow items, not the selection rectangle."""
+        # Remove only arrow sub-items (keep selection rectangle)
         for item in [self._body_item, self._head_item]:
             if item is not None:
                 try:
@@ -274,12 +281,12 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(self.arrow_points) < 2:
             return
 
-        # Redessiner la flèche
+        # Redraw the arrow
         self._draw_arrow_components()
 
     def _draw_items(self):
         """Dessine la flèche ET met à jour le rectangle"""
-        # Supprimer anciens items de flèche
+        # Remove previous arrow sub-items
         for item in [self._body_item, self._head_item]:
             if item is not None:
                 try:
@@ -291,18 +298,18 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(self.arrow_points) < 2:
             return
 
-        # Dessiner la flèche
+        # Draw the arrow
         self._draw_arrow_components()
         
-        # Mettre à jour le rectangle
+        # Update the selection rectangle
         if hasattr(self, '_selection_rect') and self._selection_rect:
             self._update_selection_rect()
 
     def _draw_arrow_components(self):
-        """CORRECTION 4: Dessine les composants de la flèche"""
+        """Draw the arrow components (body and head)."""
         pts = self.arrow_points
 
-        # Corps de la flèche
+        # Arrow body
         if self.arrow_style == "zigzag":
             body_path = self._create_zigzag_path(pts)
         elif len(pts) > 2 and self._is_curved():
@@ -318,7 +325,7 @@ class CustomArrowItem(QGraphicsItemGroup):
             for p in pts[1:]:
                 body_path.lineTo(p)
 
-        # Tête de flèche
+        # Arrow head
         start, end = pts[-2], pts[-1]
         dx, dy = end.x() - start.x(), end.y() - start.y()
         length = math.hypot(dx, dy)
@@ -329,7 +336,7 @@ class CustomArrowItem(QGraphicsItemGroup):
             if self.arrow_style != "zigzag":
                 body_path = self._truncate_path_end(body_path, new_end)
 
-        # Créer le corps
+        # Create body item
         self._body_item = QGraphicsPathItem(body_path)
         pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.3)
         if self.arrow_style == "dotted":
@@ -342,7 +349,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._body_item.setBrush(QBrush(Qt.NoBrush))
         self.addToGroup(self._body_item)
 
-        # Créer la tête
+        # Create head item
         head_path = self._draw_arrow_head_triangle(start, end, head_length)
         self._head_item = QGraphicsPathItem(head_path)
         self._head_item.setPen(QPen(Qt.NoPen))
@@ -350,8 +357,8 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.addToGroup(self._head_item)
 
     def _draw_arrow_components_only(self):
-        """Redessine SEULEMENT les composants de la flèche, sans toucher au rectangle"""
-        # Supprimer SEULEMENT les items de flèche (pas le rectangle)
+        """Redraw only the arrow components without touching the selection rect."""
+        # Remove only the arrow sub-items (not the rectangle)
         for item in [self._body_item, self._head_item]:
             if item is not None:
                 try:
@@ -363,15 +370,15 @@ class CustomArrowItem(QGraphicsItemGroup):
         if len(self.arrow_points) < 2:
             return
 
-        # Redessiner SEULEMENT la flèche (réutilise le code existant)
+        # Redraw only the arrow (reuse the existing code)
         self._draw_arrow_components()
 
     def _update_selection_rect(self):
-        """CORRECTION 5: Met à jour la position du rectangle"""
+        """Update the selection rectangle position and size."""
         if not self._selection_rect:
             return
             
-        # Recalculer la bounding box basée sur les nouveaux points
+        # Recompute bounding box based on current points
         min_x = min(p.x() for p in self.arrow_points)
         max_x = max(p.x() for p in self.arrow_points)
         min_y = min(p.y() for p in self.arrow_points)
@@ -385,7 +392,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))
         self._selection_rect.setRect(rect_x, rect_y, rect_width, rect_height)
         
-    # CORRECTION 6: Méthodes utilitaires simplifiées
+    # Utility methods
     def _is_curved(self):
         return len(self.arrow_points) > 2
 
@@ -449,18 +456,18 @@ class CustomArrowItem(QGraphicsItemGroup):
 
     def refresh_visual(self):
         """Met à jour l'affichage après changement de propriétés"""
-        # Sauvegarder l'état de sélection
+        # Preserve selection state
         was_selected = self.isSelected()
         
-        # SOLUTION: Ne redessiner que les éléments visuels, pas le rectangle
+        # Redraw only visual components, not the rectangle
         self._draw_arrow_components_only()
         
-        # Mettre à jour seulement la couleur du rectangle existant
+        # Update only the selection rectangle color
         if self._selection_rect:
             self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))
         
-        # Restaurer l'état de sélection
+        # Restore selection state
         self.setSelected(was_selected)
         
-        # Forcer la mise à jour visuelle
+        # Force visual update
         self.update()
