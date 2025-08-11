@@ -38,7 +38,7 @@ class CameraManager:
         # Animation scaffolding for future smooth transitions
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self._animate_step)
-        self.animation_duration = 400  # ms (plus rapide)
+        self.animation_duration = 400  # ms (faster)
         self.animation_steps = 20      # fewer steps
         self.current_animation_step = 0
         self.animation_start_transform = QTransform()
@@ -51,7 +51,7 @@ class CameraManager:
         self._save_full_view()
     
     def _save_full_view(self):
-        """Sauvegarde la vue complète du terrain avec zoom de base"""
+        """Save full pitch view with base zoom"""
         # Default full view at startup – fairly close zoom
         margin = SCENE_EXTRA_GRASS
         self.full_view_rect = QRectF(
@@ -124,36 +124,36 @@ class CameraManager:
             # TLC (Top Left Corner in pitch coords) appears bottom-left on screen due to Y inversion
             return QRectF(
                 X_MIN,                        # behind left goal
-                 Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain
-                PITCH_LENGTH//2,             # Largeur jusqu'au milieu
-                PITCH_WIDTH * 0.8       # 60% vers le bas (Y_MAX)
+                 Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Start at middle of field
+                PITCH_LENGTH//2,             # Width to the middle
+                PITCH_WIDTH * 0.8       
             )
             
         elif mode == "top_right_corner":
             # TRC appears bottom-right on screen due to Y inversion
             return QRectF(
-                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
-                Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,      # Commence au milieu du terrain (+ ((PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2))
-                PITCH_LENGTH // 2 ,            # width up to the middle
-                PITCH_WIDTH * 0.8        # 60% vers le bas (Y_MAX)
+                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),    
+                Y_MIN + (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,     
+                PITCH_LENGTH // 2 ,           
+                PITCH_WIDTH * 0.8        
             )
             
         elif mode == "bottom_left_corner":
             # BLC appears top-left on screen due to Y inversion
             return QRectF(
-                X_MIN,     # Depuis milieu terrain
-                Y_MIN,                            # Tout en haut (Y_MIN)
-                PITCH_LENGTH//2    ,            # width up to the middle
-                PITCH_WIDTH * 0.8                 # 60% vers le milieu
+                X_MIN,     
+                Y_MIN,                           
+                PITCH_LENGTH//2    ,           
+                PITCH_WIDTH * 0.8                 
             )
             
         elif mode == "bottom_right_corner":
             # BRC appears top-right on screen due to Y inversion
             return QRectF(
-                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),     # Depuis milieu terrain
-                Y_MIN,                            # Tout en haut (Y_MIN)
-                PITCH_LENGTH//2,            # width up to the middle
-                PITCH_WIDTH * 0.8                 # 60% vers le milieu
+                X_MIN + (PITCH_LENGTH - 3*PENALTY_AREA_LENGTH),    
+                Y_MIN,                            
+                PITCH_LENGTH//2,           
+                PITCH_WIDTH * 0.8               
             )
         
 
@@ -184,7 +184,7 @@ class CameraManager:
         # Compute transform manually to keep scale(1, -1)
         view_rect = self.view.viewport().rect()
         
-        # Calculer le facteur de zoom pour faire tenir le rectangle cible
+        # Calculate zoom factor to fit the target rectangle
         scale_x = view_rect.width() / target_rect.width()
         scale_y = view_rect.height() / target_rect.height()
         scale_factor = min(scale_x, scale_y) * 0.9

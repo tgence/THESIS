@@ -40,8 +40,8 @@ class ThemeManager:
     """
     def __init__(self, use_petroff: bool = True, cr_target: float = 3.0, de_min: float = 20.0):
         self.use_petroff = use_petroff
-        self.cr_target = cr_target # Contraste minimum entre herbe et ligne
-        self.de_min = de_min # Delta E minimum entre les couleurs
+        self.cr_target = cr_target # Minimum contrast between grass and line
+        self.de_min = de_min # Minimum Delta E between colors
 
     def fallback(self) -> Dict[str, str]:
         """Return a conservative, always-valid theme as a safety net."""
@@ -112,5 +112,5 @@ class ThemeManager:
                     best_min_dist = max_candidate[0]
                     best = max_candidate[1]
 
-        # Fallback si rien n'est > threshold, on prend le "moins pire"
+        # Fallback if nothing is > threshold, take the "least bad"
         return best

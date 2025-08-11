@@ -184,6 +184,7 @@ class ArrowProperties(QWidget):
         buttons_layout.addWidget(self.ok_button)
         self.delete_button = QPushButton("Delete")
         self.delete_button.setFixedSize(80, 30)
+        self.delete_button.setStyleSheet("background-color: #ff4444; color: white; border: 2px solid #ff4444;")
         buttons_layout.addWidget(self.delete_button)
         main_layout.addWidget(buttons_frame)
         self.setFixedSize(320, 500)
@@ -310,7 +311,7 @@ class ArrowProperties(QWidget):
                 old_value = self.selected_from_player
                 self.selected_from_player = player_id
                 if player_text == "No Player":
-                    # Remettre le bouton "Select Player" et supprimer le widget joueur
+                    # Restore "Select Player" button and remove player widget
                     if self.from_player_widget:
                         self.from_container.removeWidget(self.from_player_widget)
                         self.from_player_widget.deleteLater()
@@ -325,7 +326,7 @@ class ArrowProperties(QWidget):
                 old_value = self.selected_to_player
                 self.selected_to_player = player_id
                 if player_text == "No Player":
-                    # Remettre le bouton "Select Player" et supprimer le widget joueur
+                    # Restore "Select Player" button and remove player widget
                     if self.to_player_widget:
                         self.to_container.removeWidget(self.to_player_widget)
                         self.to_player_widget.deleteLater()
@@ -411,7 +412,7 @@ class ArrowProperties(QWidget):
         if from_player is not None:
             self._update_player_display("from", from_player)
         else:
-            # reset affichage, montre le bouton "Select Player"
+            # reset display, show "Select Player" button
             if self.from_player_widget:
                 self.from_container.removeWidget(self.from_player_widget)
                 self.from_player_widget.deleteLater()

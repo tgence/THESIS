@@ -104,7 +104,7 @@ class SettingsManager(QObject):
         self.settingsChanged.emit()
     
     def get_all_settings(self):
-        """Retourne un dictionnaire avec tous les paramètres"""
+        """Return dictionary with all settings"""
         return {
             'player_scale': self._player_scale,
             'ball_color': self._ball_color,
@@ -126,7 +126,7 @@ class ColorButton(QPushButton):
         self.clicked.connect(self._on_clicked)
         
     def _on_clicked(self):
-        """Ouvre le dialog de sélection de couleur"""
+        """Open color selection dialog"""
         initial = QColor(self._color)
         color = QColorDialog.getColor(initial, self, "Choose color")
         if color.isValid():
@@ -134,7 +134,7 @@ class ColorButton(QPushButton):
             self.colorChanged.emit(color.name())
     
     def update_color(self, color):
-        """Met à jour la couleur du bouton"""
+        """Update button color"""
         self._color = color
         self.setStyleSheet(f"""
             QPushButton {{

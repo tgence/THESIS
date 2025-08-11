@@ -63,7 +63,7 @@ class CameraControlWidget(QWidget):
         self.reset_zoom_btn.setMaximumWidth(40)  # compact reset button
         self.reset_zoom_btn.setMaximumHeight(25)
         self.reset_zoom_btn.setToolTip("Reset to Full View")
-        self.reset_zoom_btn.setStyleSheet("font-size: 8px; padding: 2px;")  # Police plus petite
+        self.reset_zoom_btn.setStyleSheet("font-size: 8px; padding: 2px;")  # Smaller font
         zoom_layout.addWidget(self.reset_zoom_btn)
         
         zoom_layout.addStretch()
@@ -89,7 +89,7 @@ class CameraControlWidget(QWidget):
             btn.setMaximumWidth(55)
             btn.setMaximumHeight(30)
             btn.setCheckable(True)
-            btn.setContentsMargins(0, 0, 0, 0)  # Pas de marges du tout
+            btn.setContentsMargins(0, 0, 0, 0)  # No margins at all
             btn.setStyleSheet("""
                 QPushButton {
                     padding: 0px 1px; 
@@ -105,10 +105,10 @@ class CameraControlWidget(QWidget):
                 "ball": "Follow Ball",
                 "left_half": "Left Half",
                 "right_half": "Right Half",
-                "top_left_corner": "Top Left Corner",     # Maintenant correct
-                "top_right_corner": "Top Right Corner",   # Maintenant correct
-                "bottom_left_corner": "Bottom Left Corner",     # Maintenant correct
-                "bottom_right_corner": "Bottom Right Corner",   # Maintenant correct
+                "top_left_corner": "Top Left Corner",     # Now correct
+                "top_right_corner": "Top Right Corner",   # Now correct
+                "bottom_left_corner": "Bottom Left Corner",     # Now correct
+                "bottom_right_corner": "Bottom Right Corner",   # Now correct
                 "penalty_left": "Left Penalty",
                 "penalty_right": "Right Penalty"
             }
@@ -140,7 +140,7 @@ class CameraControlWidget(QWidget):
         self.reset_zoom_btn.clicked.connect(self.resetZoomRequested.emit)
     
     def set_mode(self, mode_key):
-        """Change le mode de caméra"""
+        """Change camera mode"""
         if mode_key == "full":
             # Full mode: no button checked
             self.current_mode = "full"
@@ -189,16 +189,16 @@ class CameraControlWidget(QWidget):
         self.modeChanged.emit(mode_key)
     
     def _update_info(self):
-        """Met à jour les informations affichées"""
+        """Update displayed information"""
         mode_names = {
             "full": "Full Pitch",
             "ball": "Following Ball",
             "left_half": "Left Half",
             "right_half": "Right Half", 
-            "top_left_corner": "Top Left Corner",     # Maintenant correct
-            "top_right_corner": "Top Right Corner",   # Maintenant correct
-            "bottom_left_corner": "Bottom Left Corner",     # Maintenant correct
-            "bottom_right_corner": "Bottom Right Corner",   # Maintenant correct
+            "top_left_corner": "Top Left Corner",     # Now correct
+            "top_right_corner": "Top Right Corner",   # Now correct
+            "bottom_left_corner": "Bottom Left Corner",     # Now correct
+            "bottom_right_corner": "Bottom Right Corner",   # Now correct
             "penalty_left": "Left Penalty",
             "penalty_right": "Right Penalty"
         }
@@ -207,7 +207,7 @@ class CameraControlWidget(QWidget):
         self.info_label.setText(f"Active: {mode_name}")
     
     def update_ball_status(self, is_following):
-        """Met à jour le statut de suivi de balle"""
+        """Update ball tracking status"""
         ball_btn = self.mode_buttons.get("ball")
         if ball_btn:
             # Keep text as "BALL"; only tooltip reflects follow state

@@ -50,13 +50,13 @@ class PlayerCircleButton(QPushButton):
         outer_radius = 20
         inner_radius = 15
         
-        # Demi-cercle du haut (couleur principale)
+        # Top half-circle (main color)
         painter.setBrush(QBrush(self.main_color))
         painter.setPen(Qt.NoPen)
         painter.drawPie(center_x - outer_radius, center_y - outer_radius, 
                        outer_radius * 2, outer_radius * 2, 0, 180 * 16)
         
-        # Demi-cercle du bas (couleur secondaire)
+        # Bottom half-circle (secondary color)
         painter.setBrush(QBrush(self.sec_color))
         painter.drawPie(center_x - outer_radius, center_y - outer_radius,
                        outer_radius * 2, outer_radius * 2, 180 * 16, 180 * 16)
@@ -81,7 +81,7 @@ class PlayerCircleButton(QPushButton):
         painter.drawText(self.rect(), Qt.AlignCenter, self.player_number)
     
     def set_selected(self, selected):
-        """Met à jour l'état de sélection"""
+        """Update selection state"""
         self.is_selected = selected
         self.update()
 
@@ -119,7 +119,7 @@ class ArrowPlayerSelection(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Style du dialogue
+        # Dialog style
         self.setStyleSheet("""
             QDialog {
                 background-color: #2b2b2b;
@@ -169,7 +169,7 @@ class ArrowPlayerSelection(QDialog):
         home_label.setStyleSheet(f"color: {self.home_main_color}; font-size: 16px; font-weight: bold;")
         home_layout.addWidget(home_label)
         
-        # Grille pour les joueurs Home
+        # Grid for Home players
         home_grid = QGridLayout()
         home_grid.setSpacing(8)
         
@@ -181,7 +181,7 @@ class ArrowPlayerSelection(QDialog):
             home_grid.addWidget(btn, row, col)
             self.player_buttons.append(btn)
             col += 1
-            if col >= 4:  # 4 joueurs par ligne
+            if col >= 4:  # 4 players per line
                 col = 0
                 row += 1
         
@@ -204,7 +204,7 @@ class ArrowPlayerSelection(QDialog):
         away_label.setStyleSheet(f"color: {self.away_main_color}; font-size: 16px; font-weight: bold;")
         away_layout.addWidget(away_label)
         
-        # Grille pour les joueurs Away
+        # Grid for Away players
         away_grid = QGridLayout()
         away_grid.setSpacing(8)
         
@@ -216,7 +216,7 @@ class ArrowPlayerSelection(QDialog):
             away_grid.addWidget(btn, row, col)
             self.player_buttons.append(btn)
             col += 1
-            if col >= 4:  # 4 joueurs par ligne
+            if col >= 4:  # 4 players per line
                 col = 0
                 row += 1
         
@@ -225,7 +225,7 @@ class ArrowPlayerSelection(QDialog):
         
         layout.addLayout(teams_layout)
         
-        # Boutons OK/Cancel
+        # OK/Cancel buttons
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
         
@@ -278,11 +278,11 @@ class ArrowPlayerSelection(QDialog):
         
         layout.addLayout(buttons_layout)
         
-        # Taille fixe
+        # Fixed size
         self.setFixedSize(600, 450)
     
     def _select_player(self, player_id, player_text):
-        """Sélectionne un joueur"""
+        """Select a player"""
         self.selected_player_id = player_id
         self.selected_player_text = player_text
         self.ok_button.setEnabled(True)
@@ -292,7 +292,7 @@ class ArrowPlayerSelection(QDialog):
             btn.set_selected(btn.player_id == player_id)
     
     def _select_no_player(self):
-        """Sélectionne aucun joueur"""
+        """Select no player"""
         self.selected_player_id = None
         self.selected_player_text = "No Player"
         
@@ -304,14 +304,14 @@ class ArrowPlayerSelection(QDialog):
         self.accept()
     
     def accept(self):
-        """Accepte la sélection"""
+        """Accept the selection"""
         if self.selected_player_id is not None or self.selected_player_text == "No Player":
             self.playerSelected.emit(self.selected_player_id or "", self.selected_player_text or "")
         super().accept()
     
     @staticmethod
     def select_player(home_players, away_players, title="Select Player", parent=None):
-        """Méthode statique pour sélectionner un joueur"""
+        """Static method to select a player"""
         dialog = PlayerSelectionDialog(home_players, away_players, title, parent)
         if dialog.exec_() == QDialog.Accepted:
             return dialog.selected_player_id, dialog.selected_player_text

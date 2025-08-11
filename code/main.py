@@ -18,9 +18,8 @@ from PyQt5.QtGui import QColor, QIcon, QFont
 
 # Local imports
 from pitch import PitchWidget
-from annotation.annotation import ArrowAnnotationManager
+from annotation.annotation import ArrowAnnotationManager, RectangleZoneManager, EllipseZoneManager
 from annotation.arrow.arrow_properties import ArrowProperties
-from annotation.tactical_zones import TacticalZoneManager
 from annotation.zone_properties import ZoneProperties
 from data_processing import load_data, extract_match_actions_from_events, format_match_time, compute_pressure
 from trajectory import TrajectoryManager
@@ -134,7 +133,7 @@ class MainWindow(QWidget):
         self.frame_manager = FrameManager(n_frames_firstHalf, n_frames_secondHalf, n_frames)
         self.trajectory_manager = None  # Initialized after pitch_widget
         self.annotation_manager = None
-        self.tactical_manager = None  # Gestionnaire de simulation tactique
+        self.tactical_manager = None  # Tactical simulation manager
         self.theme_mgr = ThemeManager(use_petroff=True,
                                       cr_target=3.0,
                                       de_min=20.0)
@@ -174,11 +173,11 @@ class MainWindow(QWidget):
         """Build the main layout: score/theme row, pitch, filters, and timeline."""
         main_layout = QHBoxLayout(self)
         
-        # Panel gauche
+        # Left panel
         left_panel = QVBoxLayout()
-        # === NOUVEAU : Container pour la partie gauche avec taille fixe ===
+        # === NEW: Container for left side with fixed size ===
         left_container = QWidget()
-        left_container.setFixedWidth(LEFT_PANEL_SIZE)  # ← TAILLE FIXE (ajustez selon vos besoins)
+        left_container.setFixedWidth(LEFT_PANEL_SIZE)  # ← FIXED SIZE (adjust as needed)
         left_container.setLayout(left_panel)
 
         score_layout = QHBoxLayout()
@@ -191,10 +190,10 @@ class MainWindow(QWidget):
         self.score_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
         score_layout.addWidget(self.score_label)  # priority + large
 
-        # Spacer flexible (prend tout l’espace restant)
+        # Flexible spacer (takes all remaining space)
         score_layout.addStretch(1)
 
-        # "Theme" (au centre/droite, mais avant settings)
+        # "Theme" (center/right, but before settings)
         theme_label = QLabel("Theme:")
         score_layout.addWidget(theme_label, 0)
 
@@ -205,7 +204,7 @@ class MainWindow(QWidget):
         self.theme_combo.currentTextChanged.connect(self.on_theme_mode_changed)
         score_layout.addWidget(self.theme_combo, 0)
 
-        # Encore un petit spacer pour respirer
+        # Another small spacer for breathing room
         score_layout.addSpacing(8)
 
         # "Visual Settings" button ALL THE WAY TO THE RIGHT
@@ -222,7 +221,7 @@ class MainWindow(QWidget):
         self.pitch_widget = PitchWidget(X_MIN, X_MAX, Y_MIN, Y_MAX)
         left_panel.addWidget(self.pitch_widget)
         
-        # Barre de filtrage des actions
+        # Action filtering bar
         self.action_filter = ActionFilterBar(self.actions_data, self._on_filter_update)
         left_panel.addLayout(self.action_filter.layout)
         
@@ -415,7 +414,7 @@ class MainWindow(QWidget):
         tools_panel.addWidget(QLabel("Future interval:"))
         tools_panel.addWidget(self.sim_interval_spin)
         
-        # Affichage des temps de loop
+        # Display loop times
         self.loop_times_label = QLabel("")
         self.loop_times_label.setWordWrap(True)
         self.loop_times_label.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
@@ -451,10 +450,6 @@ class MainWindow(QWidget):
         self.curve_button.clicked.connect(lambda: self.set_tool_mode("curve"))
         tools_panel.addWidget(self.curve_button)
         
-        # Zone tools
-        tools_panel.addWidget(QLabel("────────────────"))
-        tools_panel.addWidget(QLabel("Tactical Zones"))
-        
         self.rectangle_zone_button = QPushButton("Rectangle Zone")
         self.rectangle_zone_button.setCheckable(True)
         self.rectangle_zone_button.clicked.connect(lambda: self.set_tool_mode("rectangle_zone"))
@@ -481,7 +476,8 @@ class MainWindow(QWidget):
         """Create managers (trajectory, annotation, tactical, camera) and UI hooks."""
         self.trajectory_manager = TrajectoryManager(self.pitch_widget, home_colors, away_colors)
         self.annotation_manager = ArrowAnnotationManager(self.pitch_widget.scene)
-        self.zone_manager = TacticalZoneManager(self.pitch_widget.scene)
+        self.rectangle_zone_manager = RectangleZoneManager(self.pitch_widget.scene)
+        self.ellipse_zone_manager = EllipseZoneManager(self.pitch_widget.scene)
         self.tactical_manager = TacticalSimulationManager(
             self.annotation_manager, self.pitch_widget, 
             home_ids, away_ids, home_colors, away_colors
@@ -496,10 +492,11 @@ class MainWindow(QWidget):
 
         # Context menu for arrows
         self.arrow_context_menu = ArrowProperties(self)
-        self._setup_arrow_context_menu()
         
         # Context menu for zones
         self.zone_context_menu = ZoneProperties(self)
+        
+        self._setup_arrow_context_menu()
         self._setup_zone_context_menu()
         
         self.set_tool_mode("select")
@@ -533,10 +530,6 @@ class MainWindow(QWidget):
         self.arrow_context_menu.toPlayerSelected.connect(self._on_to_player_selected)
         self.arrow_context_menu.deleteRequested.connect(self._on_arrow_delete_requested)
         self.arrow_context_menu.propertiesConfirmed.connect(self._on_arrow_properties_confirmed)
-        
-        # Connect zone signals
-        self.zone_context_menu.deleteRequested.connect(self._on_zone_delete_requested)
-        self.zone_context_menu.propertiesConfirmed.connect(self._on_zone_properties_confirmed)
     
     def _connect_signals(self):
         """Connect UI controls, timer, and camera widget signals."""
@@ -628,7 +621,7 @@ class MainWindow(QWidget):
         
         half, idx, halftime = self.frame_manager.get_frame_data(frame_number)
         
-        # Mode simulation : trajectoires futures
+        # Simulation mode: future trajectories
         if self.simulation_mode and self.show_trajectories_checkbox.isChecked():
             if self.tactical_manager.tactical_arrows:
                 self.tactical_manager.calculate_simulated_trajectories(
@@ -660,10 +653,10 @@ class MainWindow(QWidget):
                     ball_color=self.settings_manager.ball_color
                 )
         
-        # Dessiner les joueurs
+        # Draw players
         self._draw_players(half, idx)
         
-        # Balle
+        # Ball
         ball_xy = xy_objects[half]["Ball"].xy[idx]
         ball_x, ball_y = ball_xy[0], ball_xy[1]
         self.pitch_widget.draw_ball(ball_x, ball_y, color=self.settings_manager.ball_color)
@@ -789,14 +782,18 @@ class MainWindow(QWidget):
         
         if mode == "select":
             self.annotation_manager.try_finish_arrow()
-            self.zone_manager.cancel_zone()
+            self.rectangle_zone_manager.cancel_zone()
+            self.ellipse_zone_manager.cancel_zone()
         if mode in ("arrow", "curve"):
             self._pause_match()
-            self.zone_manager.set_mode("select")
+            self.rectangle_zone_manager.set_mode("select")
+            self.ellipse_zone_manager.set_mode("select")
         if mode in ("rectangle_zone", "ellipse_zone"):
             self._pause_match()
-            zone_type = "rectangle" if mode == "rectangle_zone" else "ellipse"
-            self.zone_manager.set_mode("create", zone_type)
+            if mode == "rectangle_zone":
+                self.rectangle_zone_manager.set_mode("create")
+            else:
+                self.ellipse_zone_manager.set_mode("create")
             self.annotation_manager.set_mode("select")
         
         if mode not in ("rectangle_zone", "ellipse_zone"):
@@ -903,27 +900,40 @@ class MainWindow(QWidget):
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())
                 clicked_arrow = self._find_arrow_at_position(scene_pos)
                 clicked_zone = self._find_zone_at_position(scene_pos)
+                
+
                                 
                 if event.button() == Qt.LeftButton:
                     if clicked_arrow:
                         # Simple left click: select only
                         self.annotation_manager.select_arrow(clicked_arrow)
-                        # IMPORTANT: Ne pas retourner True ici pour permettre le drag
+                        self.rectangle_zone_manager.clear_selection()
+                        self.ellipse_zone_manager.clear_selection()
+                        # IMPORTANT: Don't return True here to allow dragging
                         return False  # Let Qt handle drag & drop
                     elif clicked_zone:
                         # Select zone
-                        self.zone_manager.select_zone(clicked_zone)
+                        self.annotation_manager.clear_selection()
+                        if clicked_zone in self.rectangle_zone_manager.zones:
+                            self.rectangle_zone_manager.select_zone(clicked_zone)
+                            self.ellipse_zone_manager.clear_selection()
+                        else:
+                            self.ellipse_zone_manager.select_zone(clicked_zone)
+                            self.rectangle_zone_manager.clear_selection()
                         return False  # Let Qt handle drag & drop
                     else:
                         # Click on empty area: clear selection
                         self.annotation_manager.clear_selection()
-                        self.zone_manager.clear_selection()
+                        self.rectangle_zone_manager.clear_selection()
+                        self.ellipse_zone_manager.clear_selection()
                         return True  # We can intercept this
                         
                 elif event.button() == Qt.RightButton:
                     if clicked_arrow:
                         # Right click: select AND open properties menu
                         self.annotation_manager.select_arrow(clicked_arrow)
+                        self.rectangle_zone_manager.clear_selection()
+                        self.ellipse_zone_manager.clear_selection()
                         
                         global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
                         # Adjust position to keep menu within screen bounds
@@ -936,8 +946,17 @@ class MainWindow(QWidget):
                         self.arrow_context_menu.show_for_arrow(clicked_arrow, global_pos)
                         return True
                     elif clicked_zone:
-                        # Right click: select zone AND open properties menu
-                        self.zone_manager.select_zone(clicked_zone)
+
+                        # Right click: select AND open zone properties menu
+                        self.annotation_manager.clear_selection()
+                        if clicked_zone in self.rectangle_zone_manager.zones:
+
+                            self.rectangle_zone_manager.select_zone(clicked_zone)
+                            self.ellipse_zone_manager.clear_selection()
+                        else:
+
+                            self.ellipse_zone_manager.select_zone(clicked_zone)
+                            self.rectangle_zone_manager.clear_selection()
                         
                         global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
                         # Adjust position to keep menu within screen bounds
@@ -947,54 +966,68 @@ class MainWindow(QWidget):
                         if global_pos.y() + 500 > screen_geometry.height():
                             global_pos.setY(global_pos.y() - 500)
                         
-                        self.zone_context_menu.set_zone(clicked_zone)
-                        self.zone_context_menu.show()
-                        self.zone_context_menu.move(global_pos)
+
+                        self.zone_context_menu.show_for_zone(clicked_zone, global_pos)
                         return True
-            
             # IMPORTANT: Do not intercept move events in select mode
             # to allow drag & drop of selected arrows
             return False
         
         # Arrow creation modes (arrow/curve) - existing logic
-        if event.type() == QEvent.MouseButtonPress:
-            if event.button() == Qt.LeftButton:
-                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
-                self.annotation_manager.add_point(scene_pos)
-                
-                if not self.annotation_manager.arrow_curved and len(self.annotation_manager.arrow_points) == 2:
-                    self.annotation_manager.finish_arrow()
-                    self.set_tool_mode("select")
-            elif event.button() == Qt.RightButton:
-                if len(self.annotation_manager.arrow_points) < 2:
-                    self.annotation_manager.cancel_arrow()
-                    self.set_tool_mode("select")
-            return True
-        
-        elif event.type() == QEvent.MouseMove and self.annotation_manager.arrow_points:
-            scene_pos = self.pitch_widget.view.mapToScene(event.pos())
-            self.annotation_manager.update_preview(scene_pos)
-            return True
+        if self.current_tool in ("arrow", "curve"):
+            if event.type() == QEvent.MouseButtonPress:
+                if event.button() == Qt.LeftButton:
+                    scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+                    self.annotation_manager.add_point(scene_pos)
+                    
+                    if not self.annotation_manager.arrow_curved and len(self.annotation_manager.arrow_points) == 2:
+                        self.annotation_manager.finish_arrow()
+                        self.set_tool_mode("select")
+                elif event.button() == Qt.RightButton:
+                    if len(self.annotation_manager.arrow_points) < 2:
+                        self.annotation_manager.cancel_arrow()
+                        self.set_tool_mode("select")
+                return True
             
-        # Zone creation modes (rectangle/ellipse)
-        if event.type() == QEvent.MouseButtonPress:
-            if event.button() == Qt.LeftButton:
+            elif event.type() == QEvent.MouseMove and self.annotation_manager.arrow_points:
                 scene_pos = self.pitch_widget.view.mapToScene(event.pos())
-                self.zone_manager.add_point(scene_pos)
-                
-                if len(self.zone_manager.zone_points) == 2:
-                    self.zone_manager.finish_zone()
-                    self.set_tool_mode("select")
-            elif event.button() == Qt.RightButton:
-                if len(self.zone_manager.zone_points) < 2:
-                    self.zone_manager.cancel_zone()
-                    self.set_tool_mode("select")
-            return True
+                self.annotation_manager.update_preview(scene_pos)
+                return True
         
-        elif event.type() == QEvent.MouseMove and self.zone_manager.zone_points:
-            scene_pos = self.pitch_widget.view.mapToScene(event.pos())
-            self.zone_manager.update_preview(scene_pos)
-            return True
+        # Zone creation modes (rectangle/ellipse)
+        elif self.current_tool in ("rectangle_zone", "ellipse_zone"):
+            if event.type() == QEvent.MouseButtonPress:
+                if event.button() == Qt.LeftButton:
+                    scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+                    if self.current_tool == "rectangle_zone":
+                        self.rectangle_zone_manager.add_point(scene_pos)
+                    else:
+                        self.ellipse_zone_manager.add_point(scene_pos)
+                elif event.button() == Qt.RightButton:
+                    if self.current_tool == "rectangle_zone":
+                        self.rectangle_zone_manager.cancel_zone()
+                    else:
+                        self.ellipse_zone_manager.cancel_zone()
+                    self.set_tool_mode("select")
+                return True
+            
+            elif event.type() == QEvent.MouseMove:
+                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+                if self.current_tool == "rectangle_zone":
+                    self.rectangle_zone_manager.update_preview(scene_pos)
+                else:
+                    self.ellipse_zone_manager.update_preview(scene_pos)
+                return True
+            
+            elif event.type() == QEvent.MouseButtonRelease:
+                if event.button() == Qt.LeftButton:
+                    if self.current_tool == "rectangle_zone":
+                        if self.rectangle_zone_manager.finish_zone():
+                            self.set_tool_mode("select")
+                    else:
+                        if self.ellipse_zone_manager.finish_zone():
+                            self.set_tool_mode("select")
+                return True
         
         return False
     
@@ -1015,23 +1048,28 @@ class MainWindow(QWidget):
                 parent = parent.parentItem()
         
         return None
-        
+
     def _find_zone_at_position(self, scene_pos):
         """Look for a zone item under the pointer within a small tolerance box."""
         # Search scene items within a tolerance zone
-        tolerance = 5.0  # pixels tolerance
+        tolerance = 5.0  # pixels tolerance (increased for easier detection)
         search_rect = QRectF(scene_pos.x() - tolerance, scene_pos.y() - tolerance, 
                            tolerance * 2, tolerance * 2)
         items = self.pitch_widget.scene.items(search_rect)
         
+
+        
         for item in items:
+
             # Check if the item is a zone or part of a zone
             parent = item
             while parent:
-                if parent in self.zone_manager.zones:
+                if parent in self.rectangle_zone_manager.zones or parent in self.ellipse_zone_manager.zones:
+
                     return parent
                 parent = parent.parentItem()
         
+
         return None
 
 
@@ -1039,21 +1077,25 @@ class MainWindow(QWidget):
             """Called when the properties popup is confirmed (no extra action needed)."""
             # The menu will close automatically
             pass
-            
+
     def _on_zone_delete_requested(self):
-        """Delete the currently selected zone and clean up."""
-        self.zone_manager.delete_selected_zone()
-        self.zone_context_menu.close()
-        
+        """Handle zone deletion request."""
+        if self.rectangle_zone_manager.selected_zone:
+            self.rectangle_zone_manager.delete_selected_zone()
+        elif self.ellipse_zone_manager.selected_zone:
+            self.ellipse_zone_manager.delete_selected_zone()
+        self.zone_context_menu.hide()
+
     def _on_zone_properties_confirmed(self):
-        """Called when the zone properties popup is confirmed (no extra action needed)."""
-        # The menu will close automatically
-        pass
-        
+        """Called when the zone properties popup is confirmed."""
+
+        self.zone_context_menu.hide()
+
     def _setup_zone_context_menu(self):
-        """Setup the zone properties popup."""
-        # Zone properties are handled directly in the ZoneProperties widget
-        pass
+        """Setup the zone context menu signals."""
+        # Connect zone signals
+        self.zone_context_menu.deleteRequested.connect(self._on_zone_delete_requested)
+        self.zone_context_menu.propertiesConfirmed.connect(self._on_zone_properties_confirmed)
     
     def on_theme_mode_changed(self, new_mode: str):
         """Regenerate theme given team colors and refresh the scene and settings UI."""

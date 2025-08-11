@@ -52,7 +52,7 @@ class ScoreManager:
                             'eid': eid
                         })
         
-        # Trier par frame
+        # Sort by frame
         self.goals.sort(key=lambda x: x['frame'])
         
     def get_score_at_frame(self, frame):

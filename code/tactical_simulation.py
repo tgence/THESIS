@@ -26,7 +26,7 @@ class TacticalSimulationManager:
         self.tactical_arrows = []  # arrows with associated players
         self.ball_possession_chain = []  # pass chain
         self.player_associations = {}  # {arrow_id: player_id}
-        self.pass_receivers = {}  # {arrow_id: receiver_player_id} pour les passes
+        self.pass_receivers = {}  # {arrow_id: receiver_player_id} for passes
         
         # Simulated trajectories
         self.simulated_player_positions = {}  # {player_id: [(x, y, frame), ...]}
@@ -51,7 +51,7 @@ class TacticalSimulationManager:
         
         self.tactical_arrows.append(tactical_arrow)
         
-        # Si c'est une passe (solid), demander le receveur
+        # If it's a pass (solid), ask for receiver
         if tactical_arrow['action_type'] == 'pass':
             return "waiting_for_receiver"
         
@@ -87,7 +87,7 @@ class TacticalSimulationManager:
             elif style == "zigzag":
                 return 'dribble'  # Zigzag = dribble
             else:
-                return 'pass'  # Solid = passe
+                return 'pass'  # Solid = pass
         
         # Fallback: inspect child items if style attribute is missing
         if hasattr(arrow, 'childItems') and arrow.childItems():
@@ -126,7 +126,7 @@ class TacticalSimulationManager:
         ball_current_pos = None
         ball_holder = None
         
-        # Obtenir la position initiale de la balle
+        # Get initial ball position
         half, idx, _ = get_frame_data_func(current_frame)
         try:
             ball_xy = xy_objects[half]["Ball"].xy[idx]
@@ -137,11 +137,11 @@ class TacticalSimulationManager:
         except (IndexError, KeyError):
             pass
         
-        # Trier les actions par ordre et par timing
+        # Sort actions by order and timing
         passes = [ta for ta in self.tactical_arrows if ta['action_type'] == 'pass']
         other_actions = [ta for ta in self.tactical_arrows if ta['action_type'] in ['run', 'dribble']]
         
-        # Calculer les trajectoires pour chaque frame
+        # Calculate trajectories for each frame
         for frame_offset in range(total_frames):
             current_sim_frame = current_frame + frame_offset
             progress = frame_offset / max(1, total_frames - 1)
@@ -163,7 +163,7 @@ class TacticalSimulationManager:
                     player_pos.x(), player_pos.y(), current_sim_frame
                 ))
             
-            # Calculer la position de la balle avec vitesse de passe
+            # Calculate ball position with pass speed
             if ball_current_pos and ball_holder:
                 ball_pos = self._calculate_ball_position_with_speed(
                     ball_current_pos, ball_holder, passes, progress, interval_seconds, 
@@ -184,9 +184,9 @@ class TacticalSimulationManager:
         
         # Realistic maximum speed according to action type
         max_speeds = {
-            'run': 8.0,      # 8 m/s course rapide
-            'dribble': 4.0,  # 4 m/s dribble
-            'pass': 0.0      # Les passes n'ont pas de limite de vitesse joueur
+            'run': 8.0,      # 8 m/s fast run
+            'dribble': 4.0,  # 4 m/s dribbling
+            'pass': 0.0      # Passes have no player speed limit
         }
         
         action_type = tactical_arrow['action_type']
@@ -195,7 +195,7 @@ class TacticalSimulationManager:
             # Limit speed if necessary
             max_allowed_speed = max_speeds[action_type]
             if required_speed > max_allowed_speed:
-                # Le joueur n'atteint pas la fin dans le temps imparti
+                # Player doesn't reach the end in the allotted time
                 # He covers the distance he can at max speed
                 distance_covered = max_allowed_speed * interval_seconds * progress
                 total_distance = arrow_length
@@ -203,7 +203,7 @@ class TacticalSimulationManager:
             else:
                 actual_progress = progress
         else:
-            # Pour les passes, utiliser le progress normal
+            # For passes, use normal progress
             actual_progress = progress
         
         # Interpolation along the arrow
@@ -215,7 +215,7 @@ class TacticalSimulationManager:
     def _calculate_ball_position_with_speed(self, initial_ball_pos, initial_holder, passes, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
         """Compute ball position given pass speed and receiver path."""
         if not passes:
-            # Pas de passe, la balle suit le porteur initial
+            # No pass, ball follows initial carrier
             if initial_holder in self.simulated_player_positions:
                 positions = self.simulated_player_positions[initial_holder]
                 if positions:
@@ -228,7 +228,7 @@ class TacticalSimulationManager:
         pass_start_time = 0.0
         
                     # For simplicity, process the first pass
-            # TODO: Implement sequential logic for multiple passes
+
         first_pass = passes[0]
         
         if 'receiver_id' in first_pass:
@@ -238,19 +238,19 @@ class TacticalSimulationManager:
             pass_speed = min(25.0, max(15.0, pass_length / 2.0))  # Adapted to distance
             pass_duration = pass_length / pass_speed
             
-            # Convertir en proportion du temps total
-            pass_duration_ratio = min(pass_duration / interval_seconds, 0.8)  # Max 80% du temps
+            # Convert to proportion of total time
+            pass_duration_ratio = min(pass_duration / interval_seconds, 0.8)  # Max 80% of time
             
             if progress <= pass_duration_ratio:
-                # Passe en cours - interpoler entre passeur et receveur
+                # Pass in progress - interpolate between passer and receiver
                 pass_progress = progress / pass_duration_ratio
                 
-                # Position du passeur
+                # Passer position
                 passer_pos = self._calculate_player_position_with_speed(
                     first_pass, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func
                 )
                 
-                # Position du receveur
+                # Receiver position
                 receiver_pos = self._get_player_position_at_progress(
                     first_pass['receiver_id'], progress, interval_seconds, current_frame, xy_objects, get_frame_data_func
                 )
@@ -275,7 +275,7 @@ class TacticalSimulationManager:
         if player_id in self.simulated_player_positions:
             positions = self.simulated_player_positions[player_id]
             if positions:
-                # Prendre la position correspondant au progress
+                # Take position corresponding to progress
                 target_index = int(progress * (len(positions) - 1))
                 target_index = min(target_index, len(positions) - 1)
                 latest_pos = positions[target_index]
@@ -380,14 +380,14 @@ class TacticalSimulationManager:
         """Remove association for the specified arrow and clean related state."""
         arrow_id = id(arrow)
         
-        # Supprimer de tactical_arrows
+        # Remove from tactical_arrows
         self.tactical_arrows = [ta for ta in self.tactical_arrows if ta['arrow_id'] != arrow_id]
         
-        # Supprimer des associations
+        # Remove associations
         if arrow_id in self.player_associations:
             del self.player_associations[arrow_id]
         
-        # Supprimer des receveurs de passe
+        # Remove from pass receivers
         if arrow_id in self.pass_receivers:
             del self.pass_receivers[arrow_id]
         

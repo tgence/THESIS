@@ -1,5 +1,5 @@
 """
-Properties panel for tactical zones.
+Properties panels for tactical zones.
 
 Provides UI controls for modifying zone properties including color, width,
 transparency, and rotation.
@@ -9,12 +9,53 @@ transparency, and rotation.
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
     QPushButton, QColorDialog, QSpinBox, QGroupBox, QGridLayout,
-    QComboBox, QDoubleSpinBox
+    QComboBox, QDoubleSpinBox, QFrame
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QIcon
+import os
+from config import *
 
-from annotation.arrow.arrow_properties import ColorButton
+# ColorButton class for zone properties
+class ColorButton(QPushButton):
+    """A button that displays a color and opens a color dialog when clicked."""
+    
+    colorChanged = pyqtSignal(str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 30)
+        self.current_color = "#000000"
+        self.clicked.connect(self._on_clicked)
+        self._update_appearance()
+        
+    def _on_clicked(self):
+        """Open color dialog and emit signal if color changes."""
+        color = QColorDialog.getColor(QColor(self.current_color), self)
+        if color.isValid():
+            new_color = color.name()
+            if new_color != self.current_color:
+                self.current_color = new_color
+                self._update_appearance()
+                self.colorChanged.emit(new_color)
+                
+    def _update_appearance(self):
+        """Update button appearance to show current color."""
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.current_color};
+                border: 2px solid #333333;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                border: 2px solid #666666;
+            }}
+        """)
+        
+    def update_color(self, color):
+        """Update the displayed color without opening dialog."""
+        self.current_color = color
+        self._update_appearance()
 
 
 class ZoneProperties(QWidget):
@@ -23,6 +64,7 @@ class ZoneProperties(QWidget):
     # Signals
     colorChanged = pyqtSignal(str)
     widthChanged = pyqtSignal(int)
+    styleChanged = pyqtSignal(str)
     fillAlphaChanged = pyqtSignal(int)
     rotationChanged = pyqtSignal(float)
     deleteRequested = pyqtSignal()
@@ -30,88 +72,145 @@ class ZoneProperties(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(Qt.Dialog | Qt.Window)
+        self.setWindowTitle("Zone Properties")
         self.current_zone = None
         self._setup_ui()
         
     def _setup_ui(self):
         """Setup the user interface."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)  # More margin around the whole dialog
+        layout.setSpacing(10)  # Much more spacing between sections
         
         # Title
         title = QLabel("Zone Properties")
-        title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 10px;")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; margin-bottom: 5px;")
         layout.addWidget(title)
         
         # === Color and Style Group ===
         style_group = QGroupBox("Appearance")
-        style_layout = QGridLayout()
+        style_layout = QVBoxLayout()
+        style_layout.setSpacing(20)  # More spacing between items
+        style_layout.setContentsMargins(15, 15, 15, 15)  # More space inside the group
         
         # Color
-        style_layout.addWidget(QLabel("Color:"), 0, 0)
+        color_layout = QHBoxLayout()
+        color_layout.addWidget(QLabel("Color:"))
         self.color_btn = ColorButton()
         self.color_btn.colorChanged.connect(self._on_color_changed)
-        style_layout.addWidget(self.color_btn, 0, 1)
+        color_layout.addWidget(self.color_btn)
+        color_layout.addStretch()
+        style_layout.addLayout(color_layout)
         
         # Width
-        style_layout.addWidget(QLabel("Width:"), 1, 0)
+        width_layout = QHBoxLayout()
+        width_layout.addWidget(QLabel("Width:"))
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(1, 10)
-        self.width_spin.setValue(2)
+        self.width_spin.setRange(1, 5)
+        self.width_spin.setValue(1)
+        self.width_spin.setFixedSize(80, 20)  # Wider width box
         self.width_spin.valueChanged.connect(self._on_width_changed)
-        style_layout.addWidget(self.width_spin, 1, 1)
+        width_layout.addWidget(self.width_spin)
+        width_layout.addStretch()
+        style_layout.addLayout(width_layout)
         
+        # Line style
+        line_style_layout = QHBoxLayout()
+        line_style_layout.addWidget(QLabel("Line Style:"))
+        self.style_combo = QComboBox()
+        self.style_combo.addItems(["Solid", "Dashed"])
+        self.style_combo.setFixedSize(120, 20)  # Wider and taller line style box
+        self.style_combo.currentIndexChanged.connect(self._on_style_changed)
+        line_style_layout.addWidget(self.style_combo)
+        line_style_layout.addStretch()
+        style_layout.addLayout(line_style_layout)
+
         # Fill transparency
-        style_layout.addWidget(QLabel("Fill Opacity:"), 2, 0)
+        alpha_layout = QHBoxLayout()
+        alpha_layout.addWidget(QLabel("Opacity:"))
         self.alpha_slider = QSlider(Qt.Horizontal)
         self.alpha_slider.setRange(0, 255)
-        self.alpha_slider.setValue(50)
+        self.alpha_slider.setValue(0)
         self.alpha_slider.valueChanged.connect(self._on_alpha_changed)
-        style_layout.addWidget(self.alpha_slider, 2, 1)
+        alpha_layout.addWidget(self.alpha_slider)
         
-        self.alpha_label = QLabel("50")
+        self.alpha_label = QLabel("0")
         self.alpha_label.setFixedWidth(30)
-        style_layout.addWidget(self.alpha_label, 2, 2)
+        alpha_layout.addWidget(self.alpha_label)
+        alpha_layout.addStretch()
+        style_layout.addLayout(alpha_layout)
         
         style_group.setLayout(style_layout)
-        layout.addWidget(style_group)
+        layout.addWidget(style_group, 2)  # Give Appearance more space (stretch factor 2)
         
         # === Rotation Group ===
         rotation_group = QGroupBox("Rotation")
         rotation_layout = QHBoxLayout()
+        rotation_layout.setContentsMargins(15, 5, 15, 5)  # Compact vertical margins
         
         self.rotation_spin = QDoubleSpinBox()
         self.rotation_spin.setRange(-180, 180)
         self.rotation_spin.setSuffix("°")
         self.rotation_spin.setDecimals(1)
         self.rotation_spin.setValue(0)
+        self.rotation_spin.setFixedWidth(80)  # Reduce width of spin box
         self.rotation_spin.valueChanged.connect(self._on_rotation_changed)
         rotation_layout.addWidget(self.rotation_spin)
         
-        # Reset rotation button
+        # Reset rotation button (bigger)
         reset_rotation_btn = QPushButton("Reset")
+        reset_rotation_btn.setFixedSize(80, 30)  # Bigger button
         reset_rotation_btn.clicked.connect(self._on_reset_rotation)
         rotation_layout.addWidget(reset_rotation_btn)
         
         rotation_group.setLayout(rotation_layout)
-        layout.addWidget(rotation_group)
+        layout.addWidget(rotation_group, 0)  # Give Rotation minimal space (stretch factor 0)
         
-        # === Control Buttons ===
-        button_layout = QHBoxLayout()
+        # === Control Buttons (same style as ArrowProperties) ===
+        buttons_frame = QFrame()
+        buttons_frame.setStyleSheet("background-color: #2b2b2b; border-top: 1px solid #555;")
+        buttons_layout = QHBoxLayout(buttons_frame)
+        buttons_layout.setContentsMargins(12, 8, 12, 8)
+        buttons_layout.setSpacing(8)
         
-        delete_btn = QPushButton("Delete Zone")
-        delete_btn.setStyleSheet("background-color: #ff4444; color: white;")
-        delete_btn.clicked.connect(self.deleteRequested.emit)
-        button_layout.addWidget(delete_btn)
+        # Undo
+        self.undo_button = QPushButton()
+        self.undo_button.setFixedSize(40, 30)
+        self.undo_button.setToolTip("Undo last action")
+        undo_icon_path = os.path.join(SVG_DIR, "undo.svg")
+        if os.path.exists(undo_icon_path):
+            self.undo_button.setIcon(QIcon(undo_icon_path))
+        buttons_layout.addWidget(self.undo_button)
         
-        button_layout.addStretch()
+        # Redo  
+        self.redo_button = QPushButton()
+        self.redo_button.setFixedSize(40, 30)
+        self.redo_button.setToolTip("Redo last action")
+        redo_icon_path = os.path.join(SVG_DIR, "redo.svg")
+        if os.path.exists(redo_icon_path):
+            self.redo_button.setIcon(QIcon(redo_icon_path))
+        buttons_layout.addWidget(self.redo_button)
         
+        buttons_layout.addStretch()
+        
+        # OK Button
         ok_btn = QPushButton("OK")
+        ok_btn.setFixedSize(80, 30)
         ok_btn.clicked.connect(self.propertiesConfirmed.emit)
-        button_layout.addWidget(ok_btn)
+        buttons_layout.addWidget(ok_btn)
         
-        layout.addLayout(button_layout)
+        # Delete Button (red with white text)
+        delete_btn = QPushButton("Delete")
+        delete_btn.setFixedSize(80, 30)
+        delete_btn.setStyleSheet("background-color: #ff4444; color: white; border: 2px solid #ff4444;")
+        delete_btn.clicked.connect(self.deleteRequested.emit)
+        buttons_layout.addWidget(delete_btn)
+        
+        layout.addWidget(buttons_frame)
+        
+        # Set fixed size - taller to accommodate more spacing
+        self.setFixedSize(340, 450)
         
         # Initial state
         self.setEnabled(False)
@@ -145,6 +244,10 @@ class ZoneProperties(QWidget):
         rotation = self.current_zone.get_rotation()
         self.rotation_spin.setValue(rotation)
         
+        # Style
+        current_style = getattr(self.current_zone, 'zone_style', 'solid')
+        self.style_combo.setCurrentIndex(1 if current_style == 'dashed' else 0)
+        
     def _on_color_changed(self, color):
         """Handle color change."""
         if self.current_zone:
@@ -156,6 +259,16 @@ class ZoneProperties(QWidget):
         if self.current_zone:
             self.current_zone.set_width(width)
         self.widthChanged.emit(width)
+    
+    def _on_style_changed(self):
+        """Handle line style change."""
+        style_text = self.style_combo.currentText().lower()
+        normalized = 'dashed' if 'dash' in style_text else 'solid'
+        if self.current_zone:
+            # Call zone item method directly; managers also expose set_style when used programmatically
+            if hasattr(self.current_zone, 'set_style'):
+                self.current_zone.set_style(normalized)
+        self.styleChanged.emit(normalized)
         
     def _on_alpha_changed(self, alpha):
         """Handle fill alpha change."""
@@ -173,3 +286,11 @@ class ZoneProperties(QWidget):
     def _on_reset_rotation(self):
         """Reset rotation to 0."""
         self.rotation_spin.setValue(0)
+        
+    def show_for_zone(self, zone, pos):
+        """Show the properties panel for a specific zone at the given position."""
+        self.set_zone(zone)
+        self.move(pos)
+        self.show()
+        self.raise_()
+        self.activateWindow()

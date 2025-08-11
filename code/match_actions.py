@@ -62,7 +62,7 @@ class ActionFilterBar:
         
         self.layout.addStretch()
         
-        # "All" button – present but disabled until some types are selected
+        # "All" button - present but disabled until some types are selected
         self.all_button = QPushButton("All")
         self.all_button.setCheckable(True)
         self.all_button.setChecked(False)
@@ -111,7 +111,7 @@ class ActionFilterBar:
     
     def _update_filter_buttons(self):
         """Rebuild filter buttons according to the current selection."""
-        # Supprimer les anciens boutons
+        # Remove old buttons
         for btn in self.action_buttons.values():
             btn.deleteLater()
         self.action_buttons.clear()
@@ -268,7 +268,7 @@ class ActionSelectionDialog(QDialog):
         return [action_type for action_type, cb in self.checkboxes.items() if cb.isChecked()]
     
     def set_selected_types(self, types):
-        """Pré-sélectionne les types donnés"""
+        """Pre-select the given types"""
         for action_type, cb in self.checkboxes.items():
             cb.setChecked(action_type in types)
         self.on_checkbox_changed()
@@ -288,7 +288,7 @@ class MatchActionsDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # Liste des actions
+        # Action list
         self.list_widget = QListWidget()
         self.populate_list()
         

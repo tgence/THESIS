@@ -27,7 +27,7 @@ class TimelineSlider(QSlider):
         self.setMouseTracking(True)
         self.hover_pos = None
         self.hover_time_str = ""
-        self.hover_frame = None  # NOUVEAU
+        self.hover_frame = None
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.width() > 0:
@@ -48,7 +48,7 @@ class TimelineSlider(QSlider):
             time_str = format_match_time(frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS)
             self.hover_pos = event.x()
             self.hover_time_str = time_str
-            self.hover_frame = frame  # NOUVEAU
+            self.hover_frame = frame
             self.hoverFrameChanged.emit(frame, time_str)
             self.update()
 
@@ -57,7 +57,7 @@ class TimelineSlider(QSlider):
         QToolTip.hideText()
         self.hover_pos = None
         self.hover_time_str = ""
-        self.hover_frame = None  # NOUVEAU
+        self.hover_frame = None
         self.update()
 
     def paintEvent(self, event):
@@ -250,7 +250,7 @@ class TimelineWidget(QWidget):
 
 
     def _update_time_label_on_value(self, frame):
-        """Met à jour SEULEMENT le temps du curseur réel (en bas à gauche)"""
+        """Update ONLY the real cursor time (bottom left)"""
         time_str = format_match_time(
             frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS
         )
@@ -281,7 +281,7 @@ class TimelineWidget(QWidget):
         self.zoom_widget.setFixedWidth(self.markers_container.width())
         self.zoom_widget.emojiClicked.connect(self.setValue)
         self.zoom_widget.closeRequested.connect(self.hide_zoomed_markers)
-        self.zoom_widget.selected_frame = center_frame  # <- pour la surbrillance
+        self.zoom_widget.selected_frame = center_frame  # <- for highlighting
 
         pos = self.markers_container.mapToGlobal(self.markers_container.rect().bottomLeft())
         self.zoom_widget.move(pos)
@@ -346,7 +346,7 @@ class TimelineWidget(QWidget):
     def handle_marker_click(self, frame):
         self.selected_frame = frame
         self.show_zoomed_markers(frame, max_actions=10)
-        self.update_markers()  # pour redraw la barre principale avec la surbrillance
+        self.update_markers()  # to redraw main bar with highlighting
 
     def value(self):
         return self.slider.value()
@@ -361,7 +361,7 @@ class TimelineWidget(QWidget):
 class ZoomedMarkersWidget(QFrame):
     """Floating overlay showing a small set of actions around a selected one."""
     emojiClicked = pyqtSignal(int)
-    closeRequested = pyqtSignal()  # nouveau signal pour fermeture
+    closeRequested = pyqtSignal()  # new signal for closing
     
     def __init__(self, actions, center_frame, n_frames, parent=None):
         super().__init__(parent)
@@ -385,7 +385,7 @@ class ZoomedMarkersWidget(QFrame):
     def eventFilter(self, obj, event):
         # Handle focus loss to close automatically
         if event.type() == QEvent.WindowDeactivate:
-            # Optionnel: fermer automatiquement quand on perd le focus
+            # Optional: close automatically when losing focus
             # self.closeRequested.emit()
             pass
         return super().eventFilter(obj, event)
@@ -395,7 +395,7 @@ class ZoomedMarkersWidget(QFrame):
         painter.setRenderHint(QPainter.Antialiasing)
         width = self.width()
         
-        # --- Dessin du bouton croix ---
+        # --- Drawing the close button ---
         cross_size = 18
         margin = 7
         cross_rect = QRect(width - cross_size - margin, margin, cross_size, cross_size)
@@ -443,7 +443,7 @@ class ZoomedMarkersWidget(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            # Clique sur la croix ?
+            # Click on the close button?
             if hasattr(self, "cross_rect") and self.cross_rect.contains(event.pos()):
                 self.closeRequested.emit()
                 return
@@ -454,7 +454,7 @@ class ZoomedMarkersWidget(QFrame):
         super().mousePressEvent(event)
 
     def showEvent(self, event):
-        """S'assurer que la fenêtre reste dans les limites de l'écran"""
+        """Ensure window stays within screen bounds"""
         super().showEvent(event)
         # Optional: adjust position if it goes off screen
         screen = QApplication.desktop().screenGeometry()

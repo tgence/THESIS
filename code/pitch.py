@@ -33,8 +33,8 @@ class PitchWidget(QWidget):
         self.theme = {}
 
 
-        self.pitch_items = []         # Objets statiques du terrain
-        self.dynamic_items = []       # Objets dynamiques (joueurs, balles, lignes, etc)
+        self.pitch_items = []         # Static pitch objects
+        self.dynamic_items = []       # Dynamic objects (players, ball, lines, etc)
         self.annotation_items = []    # Annotations/arrows, managed elsewhere
 
         self.scene = QGraphicsScene(self)
@@ -253,7 +253,7 @@ class PitchWidget(QWidget):
         arrow_thickness = CONFIG.PLAYER_ARROW_THICKNESS
         chevron_size = CONFIG.PLAYER_CHEVRON_SIZE
         
-        # Dessin d'un joueur avec orientation
+        # Draw a player with orientation
         min_velocity = 0.01 # m/s to avoid display bugs
         if display_orientation and angle is not None and velocity is not None:
             velocity = max(velocity, min_velocity)
@@ -316,7 +316,7 @@ class PitchWidget(QWidget):
         inner.setZValue(z_offset + 3)
         group.addToGroup(inner)
         
-        # Ajuster la taille de la police en fonction du scale
+        # Adjust font size based on scale
         font = QFont("Arial")
         font.setBold(True)
         font.setPointSize(int(inner_radius * 1.8))
@@ -372,7 +372,7 @@ class PitchWidget(QWidget):
             return line
 
 
-    def draw_pressure(self, x, y, color, radius=None, opacity=0.5):
+    def draw_pressure(self, x, y, color, opacity=0.5):
         """
         Draw a translucent circle to represent a pressure area.
         - x, y: center in meters
@@ -380,11 +380,9 @@ class PitchWidget(QWidget):
         - color: hex or rgba
         - opacity: 0..1
         """
-        if radius is None:
-            radius = CONFIG.PLAYER_OUTER_RADIUS * 2  # Zone plus large que le joueur
 
         ellipse = QGraphicsEllipseItem(
-            x - radius, y - radius, 2*radius, 2*radius
+            x - CONFIG.PLAYER_OUTER_RADIUS * 2, y - CONFIG.PLAYER_OUTER_RADIUS * 2, 2*CONFIG.PLAYER_OUTER_RADIUS * 2, 2*CONFIG.PLAYER_OUTER_RADIUS * 2
         )
         ellipse.setBrush(QBrush(QColor(color)))
         ellipse.setOpacity(opacity)
@@ -431,7 +429,7 @@ class PitchWidget(QWidget):
             # ballstatus already flat
             ball_active = ballstatus[frame_number] != 0
         else:
-            # Cas pourri mais on ne crash pas
+            # Edge case but we don't crash
             ball_active = True
 
         if not ball_active:
@@ -443,7 +441,7 @@ class PitchWidget(QWidget):
 
         carrier_pid, carrier_side = carrier
 
-        press_int = pressure_fn(
+        pressure = pressure_fn(
             ball_xy=ball_xy,
             carrier_pid=carrier_pid,
             carrier_side=carrier_side,
@@ -456,13 +454,13 @@ class PitchWidget(QWidget):
             idx=idx
         )
 
-        color = get_pressure_color(press_int)
+        color = get_pressure_color(pressure)
 
 
-        # Centre sur le porteur (pas la balle)
+        # Center on the carrier (not the ball)
         xy = xy_objects[half][carrier_side].xy[idx]
         i = (home_ids if carrier_side=="Home" else away_ids).index(carrier_pid)
         x, y = xy[2*i], xy[2*i+1]
 
         self.draw_pressure(x, y, color=color)
-        return press_int
+        return pressure

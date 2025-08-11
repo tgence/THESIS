@@ -465,7 +465,7 @@ def compute_pressure(
     """
     Compute defensive pressure around the ball carrier at the given frame.
     """
-   # --- Position du porteur
+   # --- Carrier position
     try:
         defenders_ids = home_ids if carrier_side == "Away" else away_ids
         carrier_team_ids = home_ids if carrier_side == "Home" else away_ids
