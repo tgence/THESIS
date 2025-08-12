@@ -45,6 +45,9 @@ class PitchWidget(QWidget):
         layout.addWidget(self.view)
         self.setLayout(layout)
         self.draw_pitch()
+        
+    
+        
 
     def clear_pitch(self):
         """Remove static field items from the scene."""
@@ -225,18 +228,17 @@ class PitchWidget(QWidget):
         self.scene.addItem(right_arc)
         self.pitch_items.append(right_arc)
 
-
     def resizeEvent(self, event):
-        super().resizeEvent(event)
-        MARGIN = SCENE_EXTRA_GRASS
-        rect = QRectF(
-            self.X_MIN - 2*MARGIN,
-            self.Y_MIN - MARGIN,
-            self.PITCH_LENGTH + 4*MARGIN,
-            self.PITCH_WIDTH + 2*MARGIN
-        )
-        self.view.setSceneRect(rect)
-        self.view.fitInView(rect, Qt.KeepAspectRatio)
+            super().resizeEvent(event)
+            MARGIN = SCENE_EXTRA_GRASS
+            rect = QRectF(
+                self.X_MIN - 2*MARGIN,
+                self.Y_MIN - MARGIN,
+                self.PITCH_LENGTH + 4*MARGIN,
+                self.PITCH_WIDTH + 2*MARGIN
+            )
+            self.view.setSceneRect(rect)
+            self.view.fitInView(rect, Qt.KeepAspectRatio)
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, 
                 angle=0, velocity=0, display_orientation=False, z_offset=10, 

@@ -7,7 +7,7 @@ Used by tactical simulation to associate annotations with players and action typ
 # annotation.py
 
 from PyQt5.QtCore import Qt, QPointF, QRectF
-from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush, QTransform
+from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush, QTransform, QCursor
 from PyQt5.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup, QGraphicsRectItem, QGraphicsEllipseItem, QStyleOptionGraphicsItem, QStyle
 
 import math
@@ -17,6 +17,76 @@ DEFAULT_ARROW_COLOR = "#000000"
 DEFAULT_ZONE_COLOR = "#000000"
 DEFAULT_ZONE_WIDTH = 1
 DEFAULT_ZONE_ALPHA = 0  # transparency for fill (0 = transparent)
+
+# Resize handle constants
+HANDLE_SIZE = 1  # Size of corner handles in pixels
+
+
+class ResizeHandle(QGraphicsRectItem):
+    """Small square handle for resizing objects at corners."""
+    
+    def __init__(self, corner_type, parent_item, color="#000000"):
+        super().__init__()
+        self.corner_type = corner_type  # 'top_left', 'top_right', 'bottom_left', 'bottom_right'
+        self.parent_item = parent_item
+        self.handle_color = color
+        self._dragging = False
+        self._last_pos = None
+        
+        # Set handle size centered on (0,0) so its center aligns with the target corner
+        self.setRect(-HANDLE_SIZE / 2.0, -HANDLE_SIZE / 2.0, HANDLE_SIZE, HANDLE_SIZE)
+        self.setPen(QPen(QColor(color), 0.1))
+        self.setBrush(QBrush(QColor(color)))
+        self.setZValue(1001)  # Above selection rectangle
+        
+        # Set cursor based on corner type
+        cursor_map = {
+            'top_left': Qt.SizeFDiagCursor,
+            'top_right': Qt.SizeBDiagCursor,
+            'bottom_left': Qt.SizeBDiagCursor,
+            'bottom_right': Qt.SizeFDiagCursor
+        }
+        self.setCursor(cursor_map.get(corner_type, Qt.SizeFDiagCursor))
+        
+        # Enable mouse interaction but disable automatic movement
+        self.setFlag(QGraphicsRectItem.ItemIsSelectable, False)
+        self.setFlag(QGraphicsRectItem.ItemIsMovable, False)
+        self.setAcceptHoverEvents(True)
+        
+        # Make sure handle receives mouse events first
+        self.setZValue(1002)  # Above everything else
+        
+    def mousePressEvent(self, event):
+        """Handle mouse press for resize operation."""
+        if event.button() == Qt.LeftButton:
+            self._dragging = True
+            # Handles are in scene, so use scene coordinates directly
+            scene_pos = event.scenePos()
+            self._last_pos = scene_pos
+            self.parent_item.start_resize(self.corner_type, scene_pos)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+        
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for resize operation."""
+        if self._dragging and event.buttons() & Qt.LeftButton:
+            # Handles are in scene, so use scene coordinates directly
+            scene_pos = event.scenePos()
+            self.parent_item.update_resize(self.corner_type, scene_pos)
+            self._last_pos = scene_pos
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+        
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release to end resize operation."""
+        if event.button() == Qt.LeftButton and self._dragging:
+            self._dragging = False
+            self.parent_item.end_resize()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 class ArrowAnnotationManager:
     def __init__(self, scene):
@@ -203,6 +273,13 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._head_item = None
         self._selection_rect = None
         self._selected_state = False
+        
+        # Resize handles
+        self._resize_handles = {}
+        self._is_resizing = False
+        self._resize_start_pos = None
+        self._resize_corner = None
+        self._original_points = None
 
         # Configuration flags
         self.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
@@ -239,34 +316,198 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._selection_rect.setVisible(False)
         
         self.addToGroup(self._selection_rect)
+        
+        # Create resize handles
+        self._create_resize_handles()
 
     def setSelected(self, selected):
-        """Affiche/cache le rectangle"""
+        """Show/hide selection rectangle and handles"""
         self._selected_state = selected
         if self._selection_rect:
             self._selection_rect.setVisible(selected)
+        
+        # Show/hide resize handles
+        if selected:
+            for handle in self._resize_handles.values():
+                if not handle.scene() and self.scene():
+                    self.scene().addItem(handle)
+                handle.setVisible(True)
+            self._update_handles_position()
+        else:
+            for handle in self._resize_handles.values():
+                handle.setVisible(False)
+
+    def _create_resize_handles(self):
+        """Create resize handles at the corners of the selection rectangle."""
+        corner_types = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
+        
+        for corner_type in corner_types:
+            handle = ResizeHandle(corner_type, self, self.arrow_color)
+            handle.setVisible(False)
+            self._resize_handles[corner_type] = handle
+    
+    def _update_handles_position(self):
+        """Update positions of resize handles based on selection rectangle."""
+        if not self._selection_rect or not self._resize_handles:
+            return
+            
+        # Get selection rectangle bounds in local coordinates
+        rect = self._selection_rect.rect()
+        
+        # Convert to scene coordinates by adding the group's position
+        group_pos = self.pos()
+        
+        handle_positions = {
+            'top_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.top()),
+            'top_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.top()),
+            'bottom_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.bottom()),
+            'bottom_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.bottom())
+        }
+        
+        for corner_type, handle in self._resize_handles.items():
+            if corner_type in handle_positions:
+                handle.setPos(handle_positions[corner_type])
+    
+    def start_resize(self, corner_type, scene_pos):
+        """Start resize operation."""
+        self._is_resizing = True
+        self._resize_corner = corner_type
+        self._resize_start_pos = scene_pos
+        
+        # Store original points relative to current group position
+        group_pos = self.pos()
+        self._original_points = [QPointF(p.x() - group_pos.x(), p.y() - group_pos.y()) for p in self.arrow_points]
+        
+        # Disable normal movement during resize
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+    
+    def update_resize(self, corner_type, scene_pos):
+        """Update arrow points during resize operation."""
+        if not self._is_resizing or not self._original_points:
+            return
+            
+        # Calculate resize delta
+        delta = scene_pos - self._resize_start_pos
+        
+        # Get original bounding rectangle
+        orig_min_x = min(p.x() for p in self._original_points)
+        orig_max_x = max(p.x() for p in self._original_points)
+        orig_min_y = min(p.y() for p in self._original_points)
+        orig_max_y = max(p.y() for p in self._original_points)
+        
+        orig_width = orig_max_x - orig_min_x
+        orig_height = orig_max_y - orig_min_y
+        
+        # Calculate new bounds based on corner being dragged
+        new_min_x, new_max_x = orig_min_x, orig_max_x
+        new_min_y, new_max_y = orig_min_y, orig_max_y
+        
+        if corner_type in ['top_left', 'bottom_left']:
+            new_min_x = orig_min_x + delta.x()
+        if corner_type in ['top_right', 'bottom_right']:
+            new_max_x = orig_max_x + delta.x()
+        if corner_type in ['top_left', 'top_right']:
+            new_min_y = orig_min_y + delta.y()
+        if corner_type in ['bottom_left', 'bottom_right']:
+            new_max_y = orig_max_y + delta.y()
+        
+        new_width = new_max_x - new_min_x
+        new_height = new_max_y - new_min_y
+        
+        # Prevent negative dimensions (allow very small forms)
+        if new_width <= 1 or new_height <= 1:
+            return
+            
+        # Calculate scale factors
+        scale_x = new_width / orig_width if orig_width > 0 else 1
+        scale_y = new_height / orig_height if orig_height > 0 else 1
+        
+        # Transform all arrow points
+        group_pos = self.pos()
+        for i, orig_relative_point in enumerate(self._original_points):
+            # Convert relative point to absolute for calculation
+            orig_point = QPointF(orig_relative_point.x() + group_pos.x(), orig_relative_point.y() + group_pos.y())
+            
+            # Normalize to [0,1] range
+            norm_x = (orig_relative_point.x() - orig_min_x) / orig_width if orig_width > 0 else 0
+            norm_y = (orig_relative_point.y() - orig_min_y) / orig_height if orig_height > 0 else 0
+            
+            # Apply new bounds and convert back to absolute coordinates
+            new_relative_x = new_min_x + norm_x * new_width
+            new_relative_y = new_min_y + norm_y * new_height
+            new_x = new_relative_x + group_pos.x()
+            new_y = new_relative_y + group_pos.y()
+            
+            self.arrow_points[i] = QPointF(new_x, new_y)
+        
+        # Redraw arrow with new points
+        self._draw_items_without_moving_rect()
+        
+        # Update selection rectangle bounds and handles
+        self._update_selection_rect_bounds()
+        self._update_handles_position()
+    
+    def end_resize(self):
+        """End resize operation."""
+        self._is_resizing = False
+        self._resize_corner = None
+        self._resize_start_pos = None
+        self._original_points = None
+        
+        # Re-enable normal movement
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+    
+    def _update_selection_rect_bounds(self):
+        """Update selection rectangle bounds based on current arrow points."""
+        if not self.arrow_points:
+            return
+            
+        # Convert arrow points to local coordinates (relative to group position)
+        group_pos = self.pos()
+        
+        local_points = [QPointF(p.x() - group_pos.x(), p.y() - group_pos.y()) for p in self.arrow_points]
+        
+        min_x = min(p.x() for p in local_points)
+        max_x = max(p.x() for p in local_points)
+        min_y = min(p.y() for p in local_points)
+        max_y = max(p.y() for p in local_points)
+        
+
+        
+        self._selection_rect.setRect(min_x, min_y, max_x - min_x, max_y - min_y)
 
     def isSelected(self):
         return self._selected_state
+    
+    def cleanup_handles(self):
+        """Clean up handles when arrow is deleted."""
+        for handle in self._resize_handles.values():
+            if handle.scene():
+                handle.scene().removeItem(handle)
+        self._resize_handles.clear()
 
     def itemChange(self, change, value):
-        """Simplified move logic: update points then redraw without moving rect."""
+        """Handle move operations only - resize is handled by handles."""
         if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
-            
-            # Calculate displacement delta
+            # Don't move if we're in resize mode (handles are controlling the resize)
+            if self._is_resizing:
+                return self.pos()
+                
+            # Store old position before change
             old_pos = self.pos()
-            new_pos = value
+            new_pos = value  # This is the position Qt wants to move to
             delta = new_pos - old_pos
             
-            
-            # Update all arrow points
+            # Update all arrow points DURING the move
             for i in range(len(self.arrow_points)):
-                old_point = self.arrow_points[i]
                 self.arrow_points[i] += delta
             
             # Redraw arrow with new points
             self._draw_items_without_moving_rect()
             
+            # Update selection rectangle and handles DURING move (real-time)
+            self._update_selection_rect_bounds()
+            self._update_handles_position()
             
         return super().itemChange(change, value)
 
@@ -600,13 +841,15 @@ class RectangleZoneManager:
         """Delete the currently selected zone."""
         if self.selected_zone:
             zone = self.selected_zone
+            # Clean up handles first
+            zone.cleanup_handles()
             if zone in self.zones:
                 self.zones.remove(zone)
             try:
                 self.scene.removeItem(zone)
             except RuntimeError:
                 pass
-            self.clear_selection()
+        self.clear_selection()
 
 
 class EllipseZoneManager:
@@ -739,13 +982,15 @@ class EllipseZoneManager:
         """Delete the currently selected zone."""
         if self.selected_zone:
             zone = self.selected_zone
+            # Clean up handles first
+            zone.cleanup_handles()
             if zone in self.zones:
                 self.zones.remove(zone)
             try:
                 self.scene.removeItem(zone)
             except RuntimeError:
                 pass
-            self.clear_selection()
+        self.clear_selection()
 
 
 # ===== ZONE ITEMS =====
@@ -765,6 +1010,14 @@ class RectangleZoneItem(QGraphicsItemGroup):
         self.is_preview = preview
         self._updating_handles = False  # Prevent recursion during handle updates
         
+        # Resize handles
+        self._resize_handles = {}
+        self._is_resizing = False
+        self._resize_start_pos = None
+        self._resize_corner = None
+        self._original_rect = None
+
+        
         # Create the main zone item
         self._create_zone_item()
         
@@ -776,6 +1029,8 @@ class RectangleZoneItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
         
+
+        
     def paint(self, painter, option, widget):
         """Override to remove default white selection rectangle."""
         option_modified = QStyleOptionGraphicsItem(option)
@@ -784,6 +1039,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
     def _create_zone_item(self):
         """Create the main zone shape."""
+        # Create zone item (not as child - use absolute coordinates like before)
         self.zone_item = QGraphicsRectItem(self.rect)
             
         # Set pen with ultra-thin thickness
@@ -814,8 +1070,10 @@ class RectangleZoneItem(QGraphicsItemGroup):
         self._selection_rect.setBrush(QBrush(Qt.NoBrush))
         self._selection_rect.setVisible(False)
 
-        # self._selection_rect.setCursor(Qt.SizeFDiagCursor)
         self.addToGroup(self._selection_rect)
+        
+        # Create resize handles
+        self._create_resize_handles()
         
     def setSelected(self, selected):
         """Handle selection state."""
@@ -823,20 +1081,37 @@ class RectangleZoneItem(QGraphicsItemGroup):
         if selected:
             self._update_selection_rect()
             self._selection_rect.setVisible(True)
+            # Show resize handles
+            for handle in self._resize_handles.values():
+                if not handle.scene() and self.scene():
+                    self.scene().addItem(handle)
+                handle.setVisible(True)
+            self._update_handles_position()
         else:
             self._selection_rect.setVisible(False)
+            # Hide resize handles
+            for handle in self._resize_handles.values():
+                handle.setVisible(False)
             
     def _update_selection_rect(self):
         """Update selection rectangle to match zone bounds."""
-        # Get the bounding rectangle of the transformed zone
+        # Convert zone_item rect to group local coordinates
+        zone_rect = self.zone_item.rect()
+        zone_pos = self.zone_item.pos()  # Position relative to group
+        
+        # Create bounds in group coordinates
+        bounds = QRectF(
+            zone_pos.x() + zone_rect.x(),
+            zone_pos.y() + zone_rect.y(),
+            zone_rect.width(),
+            zone_rect.height()
+        )
+            
+        # Apply rotation if needed
         if self.rotation_angle != 0:
-            # For rotated shapes, get the actual bounding box in scene coordinates
-            scene_bounds = self.zone_item.sceneBoundingRect()
-            # Convert back to item coordinates
-            bounds = self.mapRectFromScene(scene_bounds)
-        else:
-            # For non-rotated shapes, use the original rectangle
-            bounds = self.zone_item.rect()
+            transform = QTransform()
+            transform.rotate(self.rotation_angle)
+            bounds = transform.mapRect(bounds)
             
         # No padding - exact bounds only
         self._selection_rect.setRect(bounds)
@@ -864,7 +1139,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         """Change zone border width."""
         self.zone_width = width
         # Scale width slower: divide growth factor by 2
-        scaled_width = width * 0.25  # Half the growth rate
+        scaled_width = width * 0.25 
         # Create new pen with color and float width
         new_pen = QPen(QColor(self.zone_color), scaled_width)
         new_pen.setStyle(Qt.DashLine if self.zone_style == "dashed" else Qt.SolidLine)
@@ -905,6 +1180,313 @@ class RectangleZoneItem(QGraphicsItemGroup):
     def get_rotation(self):
         """Get current rotation angle."""
         return self.rotation_angle
+    
+    def _create_resize_handles(self):
+        """Create resize handles at the corners of the selection rectangle."""
+        corner_types = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
+        
+        for corner_type in corner_types:
+            handle = ResizeHandle(corner_type, self, self.zone_color)
+            handle.setVisible(False)
+            self._resize_handles[corner_type] = handle
+    
+    def _update_handles_position(self):
+        """Update positions of resize handles based on selection rectangle."""
+        if not self._selection_rect or not self._resize_handles:
+            return
+            
+        # Get selection rectangle bounds in local coordinates
+        rect = self._selection_rect.rect()
+        
+        # Convert to scene coordinates by adding the group's position
+        group_pos = self.pos()
+        
+        handle_positions = {
+            'top_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.top()),
+            'top_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.top()),
+            'bottom_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.bottom()),
+            'bottom_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.bottom())
+        }
+        
+        for corner_type, handle in self._resize_handles.items():
+            if corner_type in handle_positions:
+                handle.setPos(handle_positions[corner_type])
+    
+    def start_resize(self, corner_type, scene_pos):
+        """Start resize operation."""
+        
+        
+        self._is_resizing = True
+        self._resize_corner = corner_type
+        self._resize_start_pos = scene_pos
+        # Store original rect in ABSOLUTE coordinates (current position after any moves)
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Disable normal movement during resize
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+    
+    def update_resize(self, corner_type, scene_pos):
+        """Update zone rectangle during resize operation."""
+        if not self._is_resizing or not self._original_rect:
+            return
+            
+        # Calculate resize delta
+        delta = scene_pos - self._resize_start_pos
+        
+        # Use _original_rect directly (it's already the correct reference position after moves)
+        orig_rect = QRectF(self._original_rect)
+        
+        
+        # Get original bounds (like arrows do)
+        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
+        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
+        
+        # Calculate new bounds based on corner being dragged (like arrows)
+        new_min_x, new_max_x = orig_min_x, orig_max_x
+        new_min_y, new_max_y = orig_min_y, orig_max_y
+        
+        if corner_type in ['top_left', 'bottom_left']:
+            new_min_x = orig_min_x + delta.x()
+        if corner_type in ['top_right', 'bottom_right']:
+            new_max_x = orig_max_x + delta.x()
+        if corner_type in ['top_left', 'top_right']:
+            new_min_y = orig_min_y + delta.y()
+        if corner_type in ['bottom_left', 'bottom_right']:
+            new_max_y = orig_max_y + delta.y()
+            
+        new_left, new_right = new_min_x, new_max_x
+        new_top, new_bottom = new_min_y, new_max_y
+        
+        # Prevent negative dimensions (allow very small forms)
+        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+            return
+            
+        # Calculate new dimensions
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        # Use coordinates directly (no conversion needed)
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        old_rect = QRectF(self.rect)
+        self.rect = QRectF(new_left, new_top, new_width, new_height)
+        
+        
+        
+        # Update zone_item with new rect
+        
+        self.zone_item.setRect(self.rect)
+        
+        # Update selection rectangle and handles
+        self._update_selection_rect()
+        self._update_handles_position()
+    
+    def end_resize(self):
+        """End resize operation."""
+        
+        
+        self._is_resizing = False
+        self._resize_corner = None
+        self._resize_start_pos = None
+        # Update _original_rect to current position for next resize
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Re-enable normal movement
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+    
+    def end_movement(self):
+        """Called when movement ends to update _original_rect."""
+        if hasattr(self, '_original_rect') and self._original_rect:
+            old_original = QRectF(self._original_rect)
+            self._original_rect = QRectF(self.rect)
+            
+    
+    def _recreate_zone_item(self):
+        """Recreate the zone item with current rectangle."""
+        # Remove old zone item from scene
+        if self.zone_item and self.scene():
+            try:
+                self.scene().removeItem(self.zone_item)
+            except Exception:
+                pass
+        # Create new item from absolute rect
+        self._create_zone_item()
+        if self.scene():
+            self.scene().addItem(self.zone_item)
+    
+    def cleanup_handles(self):
+        """Clean up handles when zone is deleted."""
+        for handle in self._resize_handles.values():
+            if handle.scene():
+                handle.scene().removeItem(handle)
+        self._resize_handles.clear()
+    
+    def _create_resize_handles(self):
+        """Create resize handles at the corners of the selection rectangle."""
+        corner_types = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
+        
+        for corner_type in corner_types:
+            handle = ResizeHandle(corner_type, self, self.zone_color)
+            handle.setVisible(False)
+            self._resize_handles[corner_type] = handle
+    
+    def _update_handles_position(self):
+        """Update positions of resize handles based on selection rectangle."""
+        if not self._selection_rect or not self._resize_handles:
+            return
+            
+        # Get selection rectangle bounds in local coordinates
+        rect = self._selection_rect.rect()
+        
+        # Convert to scene coordinates by adding the group's position
+        group_pos = self.pos()
+        
+        handle_positions = {
+            'top_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.top()),
+            'top_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.top()),
+            'bottom_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.bottom()),
+            'bottom_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.bottom())
+        }
+        
+        for corner_type, handle in self._resize_handles.items():
+            if corner_type in handle_positions:
+                handle.setPos(handle_positions[corner_type])
+    
+    def start_resize(self, corner_type, scene_pos):
+        """Start resize operation."""
+        self._is_resizing = True
+        self._resize_corner = corner_type
+        self._resize_start_pos = scene_pos
+        # Store original rect in ABSOLUTE coordinates (consistent with update)
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Disable normal movement during resize
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+    
+    def update_resize(self, corner_type, scene_pos):
+        """Update zone rectangle during resize operation."""
+        if not self._is_resizing or not self._original_rect:
+            return
+            
+        # Calculate resize delta
+        delta = scene_pos - self._resize_start_pos
+        
+        # Use _original_rect directly (it's already the correct reference position after moves)
+        orig_rect = QRectF(self._original_rect)
+        
+        
+        # Get original bounds (like arrows do)
+        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
+        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
+        
+        # Calculate new bounds based on corner being dragged (like arrows)
+        new_min_x, new_max_x = orig_min_x, orig_max_x
+        new_min_y, new_max_y = orig_min_y, orig_max_y
+        
+        if corner_type in ['top_left', 'bottom_left']:
+            new_min_x = orig_min_x + delta.x()
+        if corner_type in ['top_right', 'bottom_right']:
+            new_max_x = orig_max_x + delta.x()
+        if corner_type in ['top_left', 'top_right']:
+            new_min_y = orig_min_y + delta.y()
+        if corner_type in ['bottom_left', 'bottom_right']:
+            new_max_y = orig_max_y + delta.y()
+            
+        new_left, new_right = new_min_x, new_max_x
+        new_top, new_bottom = new_min_y, new_max_y
+        
+        # Prevent negative dimensions (allow very small forms)
+        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+            return
+            
+        # Calculate new dimensions
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        # Use coordinates directly (no conversion needed)
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        old_rect = QRectF(self.rect)
+        self.rect = QRectF(new_left, new_top, new_width, new_height)
+        
+        
+        
+        # Update zone_item with new rect
+        
+        self.zone_item.setRect(self.rect)
+        
+        # Update selection rectangle and handles
+        self._update_selection_rect()
+        self._update_handles_position()
+    
+    def end_resize(self):
+        """End resize operation."""
+        
+        
+        self._is_resizing = False
+        self._resize_corner = None
+        self._resize_start_pos = None
+        # Update _original_rect to current position for next resize
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Re-enable normal movement
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+    
+    def end_movement(self):
+        """Called when movement ends to update _original_rect."""
+        if hasattr(self, '_original_rect') and self._original_rect:
+            old_original = QRectF(self._original_rect)
+            self._original_rect = QRectF(self.rect)
+            
+    
+    def _recreate_zone_item(self):
+        """Recreate the zone item with current rectangle."""
+        # Remove old zone item from scene
+        if self.zone_item and self.scene():
+            try:
+                self.scene().removeItem(self.zone_item)
+            except Exception:
+                pass
+        # Create new item from absolute rect
+        self._create_zone_item()
+        if self.scene():
+            self.scene().addItem(self.zone_item)
+    
+    def cleanup_handles(self):
+        """Clean up handles when zone is deleted."""
+        for handle in self._resize_handles.values():
+            if handle.scene():
+                handle.scene().removeItem(handle)
+        self._resize_handles.clear()
+    
+    def itemChange(self, change, value):
+        """Handle move operations only - resize is handled by handles."""
+        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+            # Don't move if we're in resize mode (handles are controlling the resize)
+            if self._is_resizing:
+                return self.pos()
+                
+            # Do not change self.rect during movement. Keep rect in local coords;
+            # moving the group is enough. Only update visuals.
+                
+            # Update selection rect and handles DURING move (real-time)
+            if hasattr(self, '_selection_rect'):
+                self._update_selection_rect()
+                self._update_handles_position()
+            
+        # After the position has actually changed, sync _original_rect to the new rect
+        if change == QGraphicsItemGroup.ItemPositionHasChanged and hasattr(self, 'rect'):
+            if hasattr(self, '_original_rect'):
+                self._original_rect = QRectF(self.rect)
+                
+        
+        return super().itemChange(change, value)
 
 
 class EllipseZoneItem(QGraphicsItemGroup):
@@ -922,6 +1504,14 @@ class EllipseZoneItem(QGraphicsItemGroup):
         self.is_preview = preview
         self._updating_handles = False  # Prevent recursion during handle updates
         
+        # Resize handles
+        self._resize_handles = {}
+        self._is_resizing = False
+        self._resize_start_pos = None
+        self._resize_corner = None
+        self._original_rect = None
+
+        
         # Create the main zone item
         self._create_zone_item()
         
@@ -933,6 +1523,8 @@ class EllipseZoneItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
         
+
+        
     def paint(self, painter, option, widget):
         """Override to remove default white selection rectangle."""
         option_modified = QStyleOptionGraphicsItem(option)
@@ -941,6 +1533,7 @@ class EllipseZoneItem(QGraphicsItemGroup):
         
     def _create_zone_item(self):
         """Create the main zone shape."""
+        # Create zone item (not as child - use absolute coordinates like before)
         self.zone_item = QGraphicsEllipseItem(self.rect)
             
         # Set pen with ultra-thin thickness
@@ -971,8 +1564,10 @@ class EllipseZoneItem(QGraphicsItemGroup):
         self._selection_rect.setBrush(QBrush(Qt.NoBrush))
         self._selection_rect.setVisible(False)
 
-        # self._selection_rect.setCursor(Qt.SizeFDiagCursor)
         self.addToGroup(self._selection_rect)
+        
+        # Create resize handles
+        self._create_resize_handles()
         
     def setSelected(self, selected):
         """Handle selection state."""
@@ -980,11 +1575,21 @@ class EllipseZoneItem(QGraphicsItemGroup):
         if selected:
             self._update_selection_rect()
             self._selection_rect.setVisible(True)
+            # Show resize handles
+            for handle in self._resize_handles.values():
+                if not handle.scene() and self.scene():
+                    self.scene().addItem(handle)
+                handle.setVisible(True)
+            self._update_handles_position()
         else:
             self._selection_rect.setVisible(False)
+            # Hide resize handles
+            for handle in self._resize_handles.values():
+                handle.setVisible(False)
             
     def _update_selection_rect(self):
         """Update selection rectangle and resize handles to match zone bounds."""
+        # Use the zone_item's local rectangle (already in group coordinates)
         bounds = self.zone_item.rect()
             
         # Apply rotation if needed
@@ -997,32 +1602,28 @@ class EllipseZoneItem(QGraphicsItemGroup):
         self._selection_rect.setRect(bounds)
         self._selection_rect.setPen(QPen(QColor(self.zone_color), 0.1))  # Ultra-thin selection
         
-        # Position resize handles at corners and edges
-        if hasattr(self, '_resize_handles'):
-            # Corners: top-left, top-right, bottom-left, bottom-right
-            # Edges: top, right, bottom, left
-            positions = [
-                (bounds.left(), bounds.top()),      # 0: top-left
-                (bounds.right(), bounds.top()),     # 1: top-right
-                (bounds.left(), bounds.bottom()),   # 2: bottom-left
-                (bounds.right(), bounds.bottom()),  # 3: bottom-right
-                (bounds.center().x(), bounds.top()),    # 4: top edge
-                (bounds.right(), bounds.center().y()),  # 5: right edge
-                (bounds.center().x(), bounds.bottom()), # 6: bottom edge
-                (bounds.left(), bounds.center().y())    # 7: left edge
-            ]
-            
-            for i, handle in enumerate(self._resize_handles):
-                if i < len(positions):
-                    handle.setPos(positions[i][0], positions[i][1])
+
     
     def itemChange(self, change, value):
-        """Handle item changes."""
-        # For now, just handle basic position changes
-        if change == QGraphicsItemGroup.ItemPositionChange:
-            # Zone moved, update selection rect
+        """Handle move operations only - resize is handled by handles."""
+        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+            # Don't move if we're in resize mode (handles are controlling the resize)
+            if self._is_resizing:
+                return self.pos()
+                
+            # Do not change self.rect during movement. Keep rect in local coords;
+            # moving the group is enough. Only update visuals.
+                
+            # Update selection rect and handles DURING move (real-time)
             if hasattr(self, '_selection_rect'):
                 self._update_selection_rect()
+                self._update_handles_position()
+            
+        # After the position has actually changed, sync _original_rect to the new rect
+        if change == QGraphicsItemGroup.ItemPositionHasChanged and hasattr(self, 'rect'):
+            if hasattr(self, '_original_rect'):
+                self._original_rect = QRectF(self.rect)
+        
         return super().itemChange(change, value)
     
     def _handle_resize(self, handle_index, new_pos):
@@ -1115,3 +1716,144 @@ class EllipseZoneItem(QGraphicsItemGroup):
     def get_rotation(self):
         """Get current rotation angle."""
         return self.rotation_angle
+    
+    def _create_resize_handles(self):
+        """Create resize handles at the corners of the selection rectangle."""
+        corner_types = ['top_left', 'top_right', 'bottom_left', 'bottom_right']
+        
+        for corner_type in corner_types:
+            handle = ResizeHandle(corner_type, self, self.zone_color)
+            handle.setVisible(False)
+            self._resize_handles[corner_type] = handle
+    
+    def _update_handles_position(self):
+        """Update positions of resize handles based on selection rectangle."""
+        if not self._selection_rect or not self._resize_handles:
+            return
+            
+        # Get selection rectangle bounds in local coordinates
+        rect = self._selection_rect.rect()
+        
+        # Convert to scene coordinates by adding the group's position
+        group_pos = self.pos()
+        
+        handle_positions = {
+            'top_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.top()),
+            'top_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.top()),
+            'bottom_left': QPointF(group_pos.x() + rect.left(), group_pos.y() + rect.bottom()),
+            'bottom_right': QPointF(group_pos.x() + rect.right(), group_pos.y() + rect.bottom())
+        }
+        
+        for corner_type, handle in self._resize_handles.items():
+            if corner_type in handle_positions:
+                handle.setPos(handle_positions[corner_type])
+    
+    def start_resize(self, corner_type, scene_pos):
+        """Start resize operation."""
+        self._is_resizing = True
+        self._resize_corner = corner_type
+        self._resize_start_pos = scene_pos
+        # Store original rect in ABSOLUTE coordinates (consistent with update)
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Disable normal movement during resize
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+    
+    def update_resize(self, corner_type, scene_pos):
+        """Update zone rectangle during resize operation."""
+        if not self._is_resizing or not self._original_rect:
+            return
+            
+        # Calculate resize delta
+        delta = scene_pos - self._resize_start_pos
+        
+        # Use _original_rect directly (it's already the correct reference position after moves)
+        orig_rect = QRectF(self._original_rect)
+        
+        
+        # Get original bounds (like arrows do)
+        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
+        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
+        
+        # Calculate new bounds based on corner being dragged (like arrows)
+        new_min_x, new_max_x = orig_min_x, orig_max_x
+        new_min_y, new_max_y = orig_min_y, orig_max_y
+        
+        if corner_type in ['top_left', 'bottom_left']:
+            new_min_x = orig_min_x + delta.x()
+        if corner_type in ['top_right', 'bottom_right']:
+            new_max_x = orig_max_x + delta.x()
+        if corner_type in ['top_left', 'top_right']:
+            new_min_y = orig_min_y + delta.y()
+        if corner_type in ['bottom_left', 'bottom_right']:
+            new_max_y = orig_max_y + delta.y()
+            
+        new_left, new_right = new_min_x, new_max_x
+        new_top, new_bottom = new_min_y, new_max_y
+        
+        # Prevent negative dimensions (allow very small forms)
+        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+            return
+            
+        # Calculate new dimensions
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        # Use coordinates directly (no conversion needed)
+        new_width = new_right - new_left
+        new_height = new_bottom - new_top
+        
+        old_rect = QRectF(self.rect)
+        self.rect = QRectF(new_left, new_top, new_width, new_height)
+        
+        
+        
+        # Update zone_item with new rect
+        
+        self.zone_item.setRect(self.rect)
+        
+        # Update selection rectangle and handles
+        self._update_selection_rect()
+        self._update_handles_position()
+    
+    def end_resize(self):
+        """End resize operation."""
+        
+        
+        self._is_resizing = False
+        self._resize_corner = None
+        self._resize_start_pos = None
+        # Update _original_rect to current position for next resize
+        self._original_rect = QRectF(self.rect)
+        
+        
+        # Re-enable normal movement
+        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+    
+    def end_movement(self):
+        """Called when movement ends to update _original_rect."""
+        if hasattr(self, '_original_rect') and self._original_rect:
+            old_original = QRectF(self._original_rect)
+            self._original_rect = QRectF(self.rect)
+            
+    
+    def _recreate_zone_item(self):
+        """Recreate the zone item with current rectangle."""
+        # Remove old zone item from scene
+        if self.zone_item and self.scene():
+            try:
+                self.scene().removeItem(self.zone_item)
+            except Exception:
+                pass
+        # Create new item from absolute rect
+        self._create_zone_item()
+        if self.scene():
+            self.scene().addItem(self.zone_item)
+    
+    def cleanup_handles(self):
+        """Clean up handles when zone is deleted."""
+        for handle in self._resize_handles.values():
+            if handle.scene():
+                handle.scene().removeItem(handle)
+        self._resize_handles.clear()

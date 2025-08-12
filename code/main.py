@@ -841,6 +841,8 @@ class MainWindow(QWidget):
         """Delete the currently selected arrow and clean its tactical links."""
         if self.arrow_context_menu.current_arrow:
             arrow = self.arrow_context_menu.current_arrow
+            # Clean up handles first
+            arrow.cleanup_handles()
             # Remove from the arrows list
             if arrow in self.annotation_manager.arrows:
                 self.annotation_manager.arrows.remove(arrow)
