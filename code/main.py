@@ -134,9 +134,10 @@ class MainWindow(QWidget):
         self.trajectory_manager = None  # Initialized after pitch_widget
         self.annotation_manager = None
         self.tactical_manager = None  # Tactical simulation manager
-        self.theme_mgr = ThemeManager(use_petroff=True,
-                                      cr_target=3.0,
-                                      de_min=20.0)
+        self.theme_mgr = ThemeManager(
+            de_min=20.0,
+            debug=True
+        )
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
         self.camera_manager = None  # Initialized after pitch_widget
         self.settings_manager = SettingsManager()
@@ -161,6 +162,15 @@ class MainWindow(QWidget):
         self._setup_ui()
         self._setup_managers()
         self._connect_signals()
+        # Precompute and cache themes at startup to remove latency when switching
+        for _mode in ("CLASSIC", "BLACK & WHITE"):
+            # Use current teams; cache key includes teams so it will be reused
+            home_main = home_colors[home_ids[0]][0] if home_ids and home_ids[0] in home_colors else "#FFFFFF"
+            home_sec  = home_colors[home_ids[0]][1] if home_ids and home_ids[0] in home_colors and len(home_colors[home_ids[0]]) > 1 else "#CCCCCC"
+            away_main = away_colors[away_ids[0]][0] if away_ids and away_ids[0] in away_colors else "#000000"
+            away_sec  = away_colors[away_ids[0]][1] if away_ids and away_ids[0] in away_colors and len(away_colors[away_ids[0]]) > 1 else "#444444"
+            _ = self.theme_mgr.generate(_mode, home_main, away_main, home_sec, away_sec)
+        # Apply current selection (now a cache hit)
         self.on_theme_mode_changed(self.theme_combo.currentText())
 
 

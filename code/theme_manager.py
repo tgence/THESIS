@@ -9,9 +9,10 @@ Generates two modes:
 """
 # theme_manager.py
 from typing import Dict
-from utils.color_utils import hex_to_lab, contrast_ratio, delta_e_lab, hex_to_lch, lch_to_hex
+from utils.color_utils import hex_to_lab, delta_e_lab, lch_to_hex, contrast_ratio, hex_to_lch, hex_to_rgb, relative_luminance
 from config import BALL_COLOR
 
+# Fallback: [grass, line, offside, arrow]
 FALLBACK = ["#08711a", "#E4E4E4", "#FF40FF", "#000000"]
 CLASSIC_GRASS = "#08711a"
 CLASSIC_LINE = "#E4E4E4"
@@ -34,14 +35,12 @@ class ThemeManager:
     """Produces color themes ensuring contrast and distinct hues.
 
     Parameters
-    - use_petroff: reserved for advanced strategies (not currently used)
-    - cr_target: minimum contrast between grass and lines
     - de_min: minimum Delta E between chosen colors
+    - debug: enable debug output
     """
-    def __init__(self, use_petroff: bool = True, cr_target: float = 3.0, de_min: float = 20.0):
-        self.use_petroff = use_petroff
-        self.cr_target = cr_target # Minimum contrast between grass and line
-        self.de_min = de_min # Minimum Delta E between colors
+    def __init__(self, de_min: float = 25.0, debug: bool = False):
+        self.de_min = de_min
+        self.debug = debug
 
     def fallback(self) -> Dict[str, str]:
         """Return a conservative, always-valid theme as a safety net."""
@@ -61,12 +60,30 @@ class ThemeManager:
             grass = CLASSIC_GRASS
             line  = CLASSIC_LINE
             forbidden = [grass, line, ball] + all_teams
-            offside = self._find_distinct_color(forbidden)
-            arrow   = self._find_distinct_color(forbidden + [offside])
-            return {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            # Wider ranges to explore more vivid and dark/light options
+            offside = self._find_distinct_color(
+                forbidden,
+                chroma=(70, 95),
+                luminance=(50, 75),
+                grass=grass,
+                line=line,
+                de_threshold=self.de_min
+            )
+            arrow   = self._find_distinct_color(
+                forbidden + [offside],
+                chroma=(70, 95),
+                luminance=(45, 70),
+                grass=grass,
+                line=line,
+                de_threshold=self.de_min    
+            )
+
+            theme = {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            return theme
 
         # === BLACK & WHITE ===
         if mode.upper() == "BLACK & WHITE":
+            
             # 1. Evaluate lightness of the 4 team colors
             if majority_light(all_teams):
                 grass = BW_GRASS_IF_LIGHT
@@ -74,43 +91,145 @@ class ThemeManager:
             else:
                 grass = BW_GRASS_IF_DARK
                 line = BW_LINE_IF_DARK
+            
             forbidden = [grass, line, ball] + all_teams
-            # Generate distinct candidates for offside/arrow (color wheel sweep)
-            offside = self._find_distinct_color(forbidden, chroma=80, luminance=80)
-            arrow = self._find_distinct_color(forbidden + [offside], chroma=80, luminance=50)
-            return {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            offside = self._find_distinct_color(
+                forbidden,
+                chroma=(75, 95),
+                luminance=(65, 90),
+                grass=grass,
+                line=line,
+                de_threshold=self.de_min
+            )
+            arrow   = self._find_distinct_color(
+                forbidden + [offside],
+                chroma=(75, 95),
+                luminance=(45, 70),
+                grass=grass,
+                line=line,
+                de_threshold=self.de_min
+            )
+            
+            theme = {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            return theme
 
         # Safety: fallback if no mode matched
         return self.fallback()
 
-    def _find_distinct_color(self, reference_colors, chroma=45, luminance=60, threshold=35):
-        """Pick a color distinct enough (Delta E > threshold) from references."""
-        forbidden_labs = [hex_to_lab(c) for c in reference_colors]
+    def _find_distinct_color(
+        self,
+        reference_colors,
+        chroma,
+        luminance,
+        grass: str | None = None,
+        line: str | None = None,
+        de_threshold = None
+    ) -> str:
+        """Find a color that passes all filters and maximizes contrast.
+
+        Filters applied:
+        1. ΔE > de_threshold: avoid colors too similar to references
+        2. min contrast ratio > 1.2: ensure visibility
+        3. min hue difference > 60°: avoid similar color families
+        
+        Score = min contrast + 0.2 * average contrast (higher is better)
+        """
+        # Normalize reference list to valid hex strings
+        refs = [c for c in reference_colors if isinstance(c, str) and c.startswith("#") and len(c) == 7]
+        forbidden_labs = [hex_to_lab(c) for c in refs]
+
         best = None
-        best_min_dist = -1
+        best_score = -1.0
 
-        for step in [60, 30, 15, 5]:
-            candidates = [lch_to_hex(luminance, chroma, h) for h in range(0, 360, step)]
+        # Adjust luminance range based on grass color
+        if grass and isinstance(luminance, tuple):
+            lmin, lmax = luminance
+            grass_luminance = relative_luminance(hex_to_rgb(grass))
+            
+            # If grass is light (white-ish), prefer dark colors
+            if grass_luminance > 0.7:
+                lmin, lmax = 0, 50  # Dark range
+            # If grass is dark (black-ish), prefer light colors  
+            elif grass_luminance < 0.3:
+                lmin, lmax = 50, 100  # Light range
+            # Otherwise keep original range
+            luminance = (lmin, lmax)
+
+        # Prepare L/C trials from either fixed value or (min,max) interval
+        if isinstance(luminance, tuple):
+            lmin, lmax = luminance
+            L_trials = [lmin, (lmin + lmax) / 2.0, lmax]
+        else:
+            L_trials = [float(luminance)]
+        if isinstance(chroma, tuple):
+            cmin, cmax = chroma
+            C_trials = [cmin, (cmin + cmax) / 2.0, cmax]
+        else:
+            C_trials = [float(chroma)]
+
+        for step in [53, 31, 19, 11, 7]:
+            candidates = []
+            for L in L_trials:
+                for C in C_trials:
+                    for h in range(0, 360, step):
+                        c_hex = lch_to_hex(L, C, h)
+                        if c_hex:
+                            candidates.append(c_hex)
             candidates = [c for c in candidates if c]
-            scored_candidates = []
             for c in candidates:
+                # ΔE filter against all references
                 c_lab = hex_to_lab(c)
-                min_dist = min([delta_e_lab(c_lab, ref_lab) for ref_lab in forbidden_labs])
-                scored_candidates.append((min_dist, c))
+                min_de = min(delta_e_lab(c_lab, lab) for lab in forbidden_labs) if forbidden_labs else 1e9
+                if min_de <= de_threshold:
+                    continue
+                
+                # Step 1: Contrast filter - check if minimum contrast is acceptable
+                contrasts = []
+                if grass:
+                    contrasts.append(contrast_ratio(c, grass))
+                if line:
+                    contrasts.append(contrast_ratio(c, line))
+                for ref_hex in refs:
+                    if grass and ref_hex == grass:
+                        continue
+                    if line and ref_hex == line:
+                        continue
+                    contrasts.append(contrast_ratio(c, ref_hex))
+                if not contrasts:
+                    continue
+                
+                min_cr = min(contrasts)
+                avg_cr = sum(contrasts) / len(contrasts)
+                
+                # Reject if minimum contrast is too low
+                if min_cr < 1.2:  # relaxed threshold for visibility
+                    continue
+                
+                # Step 2: Hue difference filter - check if hue is sufficiently different
+                c_lch = hex_to_lch(c)
+                c_hue = c_lch[2]
+                min_hue_diff = 360.0
+                for ref_hex in refs:
+                    ref_lch = hex_to_lch(ref_hex)
+                    ref_hue = ref_lch[2]
+                    hue_diff = abs(c_hue - ref_hue)
+                    hue_diff = min(hue_diff, 360 - hue_diff)  # handle wrap-around
+                    min_hue_diff = min(min_hue_diff, hue_diff)
+                
+                # Reject if hue is too similar to any forbidden color
+                if min_hue_diff < 60:  # minimum 60° hue separation
+                    continue
+                
+                # If we reach here, the color passes both filters
+                # Score based on contrast quality (higher is better)
+                score = min_cr + 0.2 * avg_cr 
+                if score > best_score:
+                    best_score = score
+                    best = c
 
-    
-            ok = [(d, c) for d, c in scored_candidates if d > threshold]
-            if ok:
-                # Pick the color with the largest min_dist (safest distance)
-                ok.sort(reverse=True)
-                return ok[0][1]
 
-            # Remember the best even if < threshold (for fallback)
-            if scored_candidates:
-                max_candidate = max(scored_candidates)
-                if max_candidate[0] > best_min_dist:
-                    best_min_dist = max_candidate[0]
-                    best = max_candidate[1]
+            if best is not None:
+                return best
 
-        # Fallback if nothing is > threshold, take the "least bad"
-        return best
+        # Nothing passed; pick vivid fallback
+        return best if best else FALLBACK[2]
