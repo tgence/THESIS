@@ -36,8 +36,6 @@ from config import *
 
 import qt_material
 
-# Toggle to trace offside computation in console
-OFFSIDE_DEBUG = False
 
 # ===== Centralized data loading =====
 data = load_data(
@@ -229,12 +227,9 @@ def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, a
     if defending_side == 'left':
         # Own goal on the left → smaller X are nearer own goal → take 2nd smallest
         chosen = xs_sorted[1] if len(xs_sorted) >= 2 else xs_sorted[0]
-        last3 = xs_sorted[:3]
     else:
         # Own goal on the right → larger X are nearer own goal → take 2nd largest
         chosen = xs_sorted[-2] if len(xs_sorted) >= 2 else xs_sorted[-1]
-        last3 = xs_sorted[-3:]
-    # No debug prints when OFFSIDE_DEBUG is False
     return chosen
 
 class MainWindow(QWidget):
@@ -263,7 +258,6 @@ class MainWindow(QWidget):
         self.tactical_manager = None  # Tactical simulation manager
         self.theme_mgr = ThemeManager(
             de_min=20.0,
-            debug=True
         )
         self.score_manager = ScoreManager(events, home_team_name, away_team_name, n_frames_firstHalf, FPS)
         self.camera_manager = None  # Initialized after pitch_widget
