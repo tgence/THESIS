@@ -1,3 +1,4 @@
+# theme_manager.py
 """
 Theme generation utilities to keep overlays visible and accessible.
 
@@ -22,41 +23,94 @@ BW_LINE_IF_LIGHT = "#E4E4E4"
 BW_LINE_IF_DARK = "#292929"
 
 def is_light(hexcolor):
-    """Return True if a hex color is considered light (simple luma heuristic)."""
+    """Return True if a hex color is considered light.
+
+    Parameters
+    ----------
+    hexcolor : str
+        Hex color string like '#RRGGBB'.
+
+    Returns
+    -------
+    bool
+        True if simple luma heuristic > 0.7.
+    """
     r, g, b = int(hexcolor[1:3],16), int(hexcolor[3:5],16), int(hexcolor[5:7],16)
     return (0.299*r + 0.587*g + 0.114*b)/255.0 > 0.7
 
 def majority_light(colors):
-    """Return True if at least two colors in the list are light."""
+    """Return True if at least two colors in the list are light.
+
+    Parameters
+    ----------
+    colors : list[str]
+        Hex colors.
+
+    Returns
+    -------
+    bool
+        True if a majority are light by :func:`is_light`.
+    """
     lights = sum(is_light(c) for c in colors)
     return lights >= 2  # majority out of 4
 
 class ThemeManager:
-    """Produces color themes ensuring contrast and distinct hues.
+    """Produce color themes ensuring contrast and distinct hues.
 
     Parameters
-    - de_min: minimum Delta E between chosen colors
-    - debug: enable debug output
+    ----------
+    de_min : float, default 25.0
+        Minimum ΔE00 between chosen colors and forbidden references.
+    debug : bool, default False
+        Unused in current code but kept for compatibility.
     """
     def __init__(self, de_min: float = 25.0, debug: bool = False):
         self.de_min = de_min
         self.debug = debug
+        # Cache computed themes to avoid recomputation when switching
+        self._cache: Dict[tuple, Dict[str, str]] = {}
 
     def fallback(self) -> Dict[str, str]:
-        """Return a conservative, always-valid theme as a safety net."""
+        """Return a conservative, always-valid theme as a safety net.
+
+        Returns
+        -------
+        dict[str, str]
+            Keys: 'grass', 'line', 'offside', 'arrow'.
+        """
         return {"grass": FALLBACK[0], "line": FALLBACK[1], "offside": FALLBACK[2], "arrow": FALLBACK[3]}
 
     def generate(self, mode: str, home_hex: str, away_hex: str, home_sec: str, away_sec: str) -> Dict[str, str]:
-        """Generate a theme dict with keys: grass, line, offside, arrow."""
+        """Generate a theme for overlays given team colors and mode.
+
+        Parameters
+        ----------
+        mode : {'CLASSIC','BLACK & WHITE'}
+        home_hex, away_hex : str
+            Primary shirt colors for Home and Away.
+        home_sec, away_sec : str
+            Secondary shirt colors for Home and Away.
+
+        Returns
+        -------
+        dict[str, str]
+            Theme with keys: 'grass', 'line', 'offside', 'arrow'.
+        """
         home = "#" + home_hex.lstrip("#")
         away = "#" + away_hex.lstrip("#")
         home_sec = "#" + home_sec.lstrip("#")
         away_sec = "#" + away_sec.lstrip("#")
         all_teams = [home, away, home_sec, away_sec]
         ball = BALL_COLOR
+        mode_upper = mode.upper()
+
+        # Cache key per mode and team colors
+        cache_key = (mode_upper, home, away, home_sec, away_sec)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         # === CLASSIC ===
-        if mode.upper() == "CLASSIC":
+        if mode_upper == "CLASSIC":
             grass = CLASSIC_GRASS
             line  = CLASSIC_LINE
             forbidden = [grass, line, ball] + all_teams
@@ -79,10 +133,11 @@ class ThemeManager:
             )
 
             theme = {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            self._cache[cache_key] = theme
             return theme
 
         # === BLACK & WHITE ===
-        if mode.upper() == "BLACK & WHITE":
+        if mode_upper == "BLACK & WHITE":
             
             # 1. Evaluate lightness of the 4 team colors
             if majority_light(all_teams):
@@ -111,6 +166,7 @@ class ThemeManager:
             )
             
             theme = {"grass": grass, "line": line, "offside": offside, "arrow": arrow}
+            self._cache[cache_key] = theme
             return theme
 
         # Safety: fallback if no mode matched
@@ -125,14 +181,34 @@ class ThemeManager:
         line: str | None = None,
         de_threshold = None
     ) -> str:
-        """Find a color that passes all filters and maximizes contrast.
+        """Find a color that passes filters and maximizes contrast.
 
+        Parameters
+        ----------
+        reference_colors : list[str]
+            Colors to avoid (teams, pitch, ball, already chosen).
+        chroma : float | tuple[float, float]
+            Fixed value or (min, max) for C in LCH.
+        luminance : float | tuple[float, float]
+            Fixed value or (min, max) for L in LCH.
+        grass, line : str, optional
+            Pitch surface and line colors (used for contrast checks).
+        de_threshold : float
+            Minimum ΔE00 between candidate and references.
+
+        Returns
+        -------
+        str
+            Hex color string.
+
+        Notes
+        -----
         Filters applied:
-        1. ΔE > de_threshold: avoid colors too similar to references
+        1. ΔE > de_threshold: avoid similarity to references
         2. min contrast ratio > 1.2: ensure visibility
         3. min hue difference > 60°: avoid similar color families
-        
-        Score = min contrast + 0.2 * average contrast (higher is better)
+
+        Score = min(contrast) + 0.2 * mean(contrast)
         """
         # Normalize reference list to valid hex strings
         refs = [c for c in reference_colors if isinstance(c, str) and c.startswith("#") and len(c) == 7]

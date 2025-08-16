@@ -1,3 +1,4 @@
+# trajectory.py
 """
 Trajectory computation and rendering for players and ball.
 
@@ -13,7 +14,15 @@ import numpy as np
 from config import *
 
 class TrajectoryManager:
-    """Manage drawing of future and simulated trajectories for players/ball."""
+    """Manage drawing of future and simulated trajectories for players/ball.
+
+    Parameters
+    ----------
+    pitch_widget : PitchWidget object
+        Widget providing access to `scene` and helpers to add items.
+    home_colors, away_colors : dict
+        Mapping `player_id -> (main_hex, secondary_hex, number_hex)`.
+    """
 
     def __init__(self, pitch_widget, home_colors, away_colors):
         self.pitch_widget = pitch_widget
@@ -37,8 +46,25 @@ class TrajectoryManager:
                                     home_ids, away_ids, n_frames, get_frame_data_func):
         """Compute future positions for players/ball for the given interval.
 
-        Uses a simple sampling rate to reduce draw load and caches results for
-        the same (frame, interval) to avoid recomputation.
+        Parameters
+        ----------
+        current_frame : int
+            Global frame used as the start of the preview horizon.
+        interval_seconds : float
+            Length of the horizon in seconds.
+        xy_objects : dict
+            Positions per half/side and for the ball.
+        home_ids, away_ids : list[str]
+            Player IDs for each side.
+        n_frames : int
+            Total number of frames in the dataset.
+        get_frame_data_func : callable
+            Function mapping global frame -> (half, half_idx, label).
+
+        Notes
+        -----
+        Uses a sampling step (``CONFIG.TRAJECTORY_SAMPLE_RATE``) and caches
+        results for the same (frame, interval) pair to avoid recomputation.
         """
         # Optimization: cache to avoid recomputing for the same (frame, interval)
         if (self.cached_frame == current_frame and 
@@ -91,7 +117,21 @@ class TrajectoryManager:
     
     def draw_future_trajectories(self, show_players=True, show_ball=True, current_frame=None, 
                                loop_start=None, loop_end=None, interval_seconds=10.0, ball_color=BALL_COLOR):
-        """Draw future trajectories with progressive fading as time advances."""
+        """Draw future trajectories with progressive fading.
+
+        Parameters
+        ----------
+        show_players, show_ball : bool, default True
+            Toggles for rendering player and ball trajectories.
+        current_frame : int or None
+            If provided, only draw future segments relative to this frame.
+        loop_start, loop_end : int or None
+            Loop bounds (unused here; kept for API similarity).
+        interval_seconds : float, default 10.0
+            Horizon used to compute per-segment fade.
+        ball_color : str
+            Hex color for the ball trajectory.
+        """
         
         # Compute fade frame counts based on the chosen interval
         fade_frames_players = int(interval_seconds * FPS)  # full interval for players
@@ -197,7 +237,19 @@ class TrajectoryManager:
                         self.pitch_widget.dynamic_items.append(final_ball)
 
     def draw_simulated_trajectories(self, simulated_data, current_frame, loop_start, loop_end, ball_color=BALL_COLOR):
-        """Draw simulated trajectories on top of the real ones."""
+        """Draw simulated trajectories on top of the real ones.
+
+        Parameters
+        ----------
+        simulated_data : dict
+            Output from TacticalSimulationManager.get_simulated_trajectories().
+        current_frame : int
+            Current global frame in the playback.
+        loop_start, loop_end : int
+            Loop bounds for opacity computation.
+        ball_color : str
+            Hex color for simulated ball path.
+        """
         if not simulated_data:
             return
         

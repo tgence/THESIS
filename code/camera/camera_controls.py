@@ -14,9 +14,17 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 
 class CameraControlWidget(QWidget):
-    """Compact camera control widget with mode buttons and zoom controls."""
+    """Compact camera control widget with mode buttons and zoom controls.
+
+    Parameters
+    ----------
+    camera_manager : CameraManager object
+        Instance managing camera modes and zoom on the main pitch view.
+    parent : QWidget, optional
+        Parent widget.
+    """
     
-    # Signaux
+    # Signals
     modeChanged = pyqtSignal(str)
     zoomInRequested = pyqtSignal()
     zoomOutRequested = pyqtSignal()
@@ -32,12 +40,12 @@ class CameraControlWidget(QWidget):
         self._connect_signals()
     
     def _setup_ui(self):
-        """Configure l'interface utilisateur compacte"""
+        """Configure a compact user interface (buttons and labels)."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(8)
         
-        # === Groupe : Camera View ===
+        # === Group: Camera View ===
         camera_group = QGroupBox("Camera View")
         camera_group.setMaximumHeight(250)  # slightly more space than before
         camera_layout = QVBoxLayout(camera_group)
@@ -134,13 +142,19 @@ class CameraControlWidget(QWidget):
         self._update_info()
     
     def _connect_signals(self):
-        """Connecte les signaux"""
+        """Connect internal button signals to external signals."""
         self.zoom_in_btn.clicked.connect(self.zoomInRequested.emit)
         self.zoom_out_btn.clicked.connect(self.zoomOutRequested.emit)
         self.reset_zoom_btn.clicked.connect(self.resetZoomRequested.emit)
     
     def set_mode(self, mode_key):
-        """Change camera mode"""
+        """Change camera mode and update button visuals.
+
+        Parameters
+        ----------
+        mode_key : str
+            One of the available keys exposed by the camera manager.
+        """
         if mode_key == "full":
             # Full mode: no button checked
             self.current_mode = "full"
@@ -189,7 +203,7 @@ class CameraControlWidget(QWidget):
         self.modeChanged.emit(mode_key)
     
     def _update_info(self):
-        """Update displayed information"""
+        """Update the small info label to reflect the active mode."""
         mode_names = {
             "full": "Full Pitch",
             "ball": "Following Ball",
@@ -207,7 +221,13 @@ class CameraControlWidget(QWidget):
         self.info_label.setText(f"Active: {mode_name}")
     
     def update_ball_status(self, is_following):
-        """Update ball tracking status"""
+        """Update the tooltip to reflect whether the ball is being followed.
+
+        Parameters
+        ----------
+        is_following : bool
+            True if camera is in ball-follow mode.
+        """
         ball_btn = self.mode_buttons.get("ball")
         if ball_btn:
             # Keep text as "BALL"; only tooltip reflects follow state
@@ -218,6 +238,12 @@ class CameraControlWidget(QWidget):
                 ball_btn.setToolTip("Click to follow ball")
     
     def get_current_mode(self):
-        """Retourne le mode actuel"""
+        """Return the current camera mode key.
+
+        Returns
+        -------
+        str
+            Current mode key (e.g., 'full', 'ball', corner, penalty).
+        """
         return self.current_mode
 

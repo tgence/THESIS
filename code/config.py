@@ -1,3 +1,4 @@
+# config.py
 """
 Global configuration and constants for the application.
 

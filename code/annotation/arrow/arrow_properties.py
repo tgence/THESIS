@@ -1,3 +1,4 @@
+# arrow_properties.py
 """
 Properties popup for a selected arrow.
 
@@ -17,10 +18,19 @@ from config import *
 import os
 
 class PlayerCircleWidget(QWidget):
+    """Small circular widget rendering a player's number and colors.
+
+    Parameters
+    ----------
+    number : int | str
+        Player shirt number.
+    main_color, sec_color, num_color : str
+        Hex colors for halves and number.
+    parent : QWidget, optional
+    """
     clicked = pyqtSignal()
 
     def __init__(self, number, main_color, sec_color, num_color, parent=None):
-        """Small circular widget rendering a player's number and colors."""
         super().__init__(parent)
         self.number = str(number)
         self.main_color = QColor(main_color)
@@ -55,7 +65,13 @@ class ArrowProperties(QWidget):
     propertiesConfirmed = pyqtSignal()
 
     def __init__(self, parent=None):
-        """Create the properties popup with controls and signals wired."""
+        """Create the properties popup with controls and signals wired.
+
+        Parameters
+        ----------
+        parent : QWidget, optional
+            Parent window (main UI).
+        """
         super().__init__(parent)
         self.setWindowFlags(Qt.Dialog | Qt.Window)
         self.setWindowTitle("Arrow Properties") 
@@ -82,6 +98,7 @@ class ArrowProperties(QWidget):
         self.delete_button.clicked.connect(lambda: self.deleteRequested.emit())
 
     def _setup_ui(self):
+        """Build and wire the UI controls for arrow properties."""
         main_layout = QVBoxLayout(self)
 
         scroll_area = QScrollArea()
@@ -191,16 +208,19 @@ class ArrowProperties(QWidget):
 
     # --- Undo/Redo ---
     def _save_state(self, action_type, old_value, new_value):
+        """Push a change into the undo/redo stack and refresh buttons."""
         self.history = self.history[:self.history_index + 1]
         self.history.append({'type': action_type, 'old_value': old_value, 'new_value': new_value})
         self.history_index += 1
         self._update_undo_redo_buttons()
 
     def _update_undo_redo_buttons(self):
+        """Enable/disable undo and redo buttons based on history index."""
         self.undo_button.setEnabled(self.history_index >= 0)
         self.redo_button.setEnabled(self.history_index < len(self.history) - 1)
 
     def _undo_action(self):
+        """Undo last change from the history stack."""
         if self.history_index >= 0:
             action = self.history[self.history_index]
             self._apply_action(action, True)
@@ -208,6 +228,7 @@ class ArrowProperties(QWidget):
             self._update_undo_redo_buttons()
 
     def _redo_action(self):
+        """Redo next change from the history stack."""
         if self.history_index < len(self.history) - 1:
             self.history_index += 1
             action = self.history[self.history_index]
@@ -215,6 +236,7 @@ class ArrowProperties(QWidget):
             self._update_undo_redo_buttons()
 
     def _apply_action(self, action, is_undo):
+        """Apply a change (or its inverse) to the current arrow/UI widgets."""
         value = action['old_value'] if is_undo else action['new_value']
         if action['type'] == 'color':
             self.current_color = value
@@ -254,6 +276,7 @@ class ArrowProperties(QWidget):
 
     # --- Property handlers ---
     def _on_color_changed(self):
+        """Open a color dialog and record the color change to history."""
         color_dialog = QColorDialog(QColor(self.current_color), self)
         if color_dialog.exec_() == QColorDialog.Accepted:
             color = color_dialog.selectedColor()    
@@ -268,18 +291,19 @@ class ArrowProperties(QWidget):
                         self.current_arrow.refresh_visual()
 
     def _on_width_changed(self, value):
-            old_value = self.current_width
-            self.current_width = value
-            self._save_state('width', old_value, value)
-            if self.current_arrow:
-                self.current_arrow.set_width(self.current_width)
-                # AJOUTER ICI:
-                if hasattr(self.current_arrow, 'refresh_visual'):
-                    self.current_arrow.refresh_visual()
+        """Update width from spin box and record to history."""
+        old_value = self.current_width
+        self.current_width = value
+        self._save_state('width', old_value, value)
+        if self.current_arrow:
+            self.current_arrow.set_width(self.current_width)
+            if hasattr(self.current_arrow, 'refresh_visual'):
+                self.current_arrow.refresh_visual()
 
         
 
     def _style_changed(self, button):
+        """Update style from radio group and record to history."""
         styles = {0: "solid", 1: "dotted", 2: "zigzag"}
         style = styles.get(self.style_buttons.id(button), "solid")
         old_style = "solid"
@@ -296,10 +320,12 @@ class ArrowProperties(QWidget):
 
     # --- Player selection ---
     def set_players_data(self, home_players, away_players):
+        """Inject player dictionaries for Home and Away selection widgets."""
         self.home_players = home_players
         self.away_players = away_players
 
     def _open_player_selection(self, selection_type):
+        """Open a player selection dialog for 'from' or 'to'."""
         title = "From" if selection_type == "from" else "To"
         dialog = ArrowPlayerSelection(self.home_players, self.away_players, title, self)
         result = dialog.exec_()
@@ -343,6 +369,7 @@ class ArrowProperties(QWidget):
         self.activateWindow()
 
     def _update_player_display(self, selection_type, player_id):
+        """Update the small player circle or revert to the Select button."""
         player_data = self.home_players.get(player_id) or self.away_players.get(player_id)
         if not player_data:
             if selection_type == "from":
@@ -378,6 +405,15 @@ class ArrowProperties(QWidget):
 
     # --- Show & state reset ---
     def show_for_arrow(self, arrow, pos):
+        """Show the properties popup for an arrow at a screen position.
+
+        Parameters
+        ----------
+        arrow : QGraphicsItemGroup
+            Arrow item that is currently selected.
+        pos : QPoint
+            Global screen position where the popup should appear.
+        """
         self.current_arrow = arrow
         self.selected_from_player = None
         self.selected_to_player = None
@@ -432,6 +468,7 @@ class ArrowProperties(QWidget):
 
 
     def _set_color_button(self, color_hex):
+        """Update the color preview button CSS."""
         self.color_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {color_hex};
@@ -444,6 +481,7 @@ class ArrowProperties(QWidget):
         """)
 
     def _on_ok_clicked(self):
+        """Apply current selections to the arrow and close the popup."""
         arrow = self.current_arrow
         if arrow is not None:
             arrow.set_color(self.current_color)
@@ -457,11 +495,13 @@ class ArrowProperties(QWidget):
         self.close()
 
     def _get_current_style(self):
+        """Return the currently selected arrow style string."""
         for btn, name in zip(self.style_buttons.buttons(), ["solid", "dotted", "zigzag"]):
             if btn.isChecked():
                 return name
         return "solid"
 
     def closeEvent(self, event):
+        """Reset current arrow reference on close."""
         self.current_arrow = None
         super().closeEvent(event)

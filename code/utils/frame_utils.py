@@ -1,3 +1,4 @@
+# frame_utils.py
 """
 Frame and possession utilities.
 
@@ -19,13 +20,20 @@ from config import FPS
 class FrameManager:
     """Manage conversions and navigation between frames.
 
-    Responsibilities:
+    Responsibilities
+    ----------------
     - Map a global frame index to (half, index-within-half, label)
     - Convert time (minutes/seconds) to global frame index and vice versa
     - Provide common helpers for interval computations and action navigation
 
-    The instance is initialized with the frame counts per half and the total
-    number of frames in the loaded match.
+    Parameters
+    ----------
+    n_frames_firstHalf : int
+        Number of frames in the first half.
+    n_frames_secondHalf : int
+        Number of frames in the second half.
+    n_frames_total : int
+        Total number of frames in the match.
     """
     
     def __init__(self, n_frames_firstHalf, n_frames_secondHalf, n_frames_total):

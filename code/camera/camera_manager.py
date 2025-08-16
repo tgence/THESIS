@@ -1,3 +1,4 @@
+# camera_manager.py
 """
 Camera manager for the pitch view.
 
@@ -13,7 +14,14 @@ from PyQt5.QtGui import QTransform
 from config import *
 
 class CameraManager:
-    """Manage camera modes, zoom, and ball-follow for the pitch view."""
+    """Manage camera modes, zoom, and ball-follow for the pitch view.
+
+    Parameters
+    ----------
+    pitch_widget : object
+        Widget exposing `view` (QGraphicsView) and `scene`, plus pitch bounds
+        attributes (`X_MIN`, `X_MAX`, `Y_MIN`, `Y_MAX`, `PITCH_LENGTH`, `PITCH_WIDTH`).
+    """
     
     def __init__(self, pitch_widget):
         self.pitch_widget = pitch_widget
@@ -51,7 +59,7 @@ class CameraManager:
         self._save_full_view()
     
     def _save_full_view(self):
-        """Save full pitch view with base zoom"""
+        """Save the full-pitch rectangle used for the 'full' camera mode."""
         # Default full view at startup – fairly close zoom
         margin = SCENE_EXTRA_GRASS
         self.full_view_rect = QRectF(
@@ -63,15 +71,40 @@ class CameraManager:
         
     
     def get_available_modes(self):
-        """Return the available camera mode keys."""
+        """Return the available camera modes.
+
+        Returns
+        -------
+        dict[str, str]
+            Mapping of mode keys to short labels (e.g., ``{"ball": "Ball", ...}``).
+        """
         return self.CAMERA_MODES
     
     def get_current_mode(self):
-        """Return the active camera mode key."""
+        """Return the active camera mode key.
+
+        Returns
+        -------
+        str
+            One of ``"full"``, ``"ball"``, corner or penalty presets.
+        """
         return self.current_mode
     
     def set_camera_mode(self, mode, animate=True):
-        """Change camera mode; optionally animate the transition."""
+        """Change camera mode.
+
+        Parameters
+        ----------
+        mode : str
+            Target mode (``"full"``, ``"ball"``, corner presets, penalty presets).
+        animate : bool, default True
+            If True, apply a lightweight animation; otherwise set immediately.
+
+        Returns
+        -------
+        bool
+            True if the mode was applied (always True in current implementation).
+        """
         if mode == "full" or mode not in self.CAMERA_MODES:
             self.current_mode = "full"
             self.follow_ball_active = False
@@ -94,7 +127,18 @@ class CameraManager:
         return True
     
     def _get_mode_rect(self, mode):
-        """Calculate the scene rectangle corresponding to a camera preset."""
+        """Calculate the scene rectangle corresponding to a camera preset.
+
+        Parameters
+        ----------
+        mode : str
+            Camera mode key.
+
+        Returns
+        -------
+        PyQt5.QtCore.QRectF
+            Scene rectangle to fit for the given mode.
+        """
         X_MIN = self.pitch_widget.X_MIN
         X_MAX = self.pitch_widget.X_MAX
         Y_MIN = self.pitch_widget.Y_MIN
@@ -177,7 +221,13 @@ class CameraManager:
         return self.full_view_rect
         
     def _set_view_immediately(self, mode):
-        """Apply the camera preset immediately (keeping the Y inversion)."""
+        """Apply the camera preset immediately (keeping the Y inversion).
+
+        Parameters
+        ----------
+        mode : str
+            Camera mode key.
+        """
         
         target_rect = self._get_mode_rect(mode)
         
@@ -224,7 +274,13 @@ class CameraManager:
 
     
     def _animate_to_mode(self, mode):
-        """Simplified animation stub that applies the mode directly."""
+        """Simplified animation stub that applies the mode directly.
+
+        Parameters
+        ----------
+        mode : str
+            Camera mode key.
+        """
         if self.animation_timer.isActive():
             self.animation_timer.stop()
         
@@ -232,26 +288,43 @@ class CameraManager:
         self._set_view_immediately(mode)
     
     def _animate_step(self):
-        """Execute one step of camera animation"""
+        """Execute one step of camera animation (currently disabled)."""
         # Animation disabled for now to avoid transform glitches
         pass
     
     def _ease_in_out_cubic(self, t):
-        """Easing function for smooth animation"""
+        """Easing function for smooth animation.
+
+        Parameters
+        ----------
+        t : float
+            Normalized time in [0, 1].
+
+        Returns
+        -------
+        float
+            Eased value.
+        """
         if t < 0.5:
             return 4 * t * t * t
         else:
             return 1 - pow(-2 * t + 2, 3) / 2
     
     def update_ball_position(self, x, y):
-        """Update tracked ball position and adjust the view if following."""
+        """Update tracked ball position and adjust the view if following.
+
+        Parameters
+        ----------
+        x, y : float
+            Ball coordinates in scene units.
+        """
         self.current_ball_pos = (x, y)
         
         if self.follow_ball_active and not np.isnan(x) and not np.isnan(y):
             self._update_ball_follow()
     
     def _update_ball_follow(self):
-        """Pan smoothly towards the new ball position."""
+        """Pan smoothly towards the new ball position (if following)."""
         if not self.current_ball_pos:
             return
             
@@ -270,11 +343,23 @@ class CameraManager:
             self.view.centerOn(new_center)
     
     def zoom_in(self, factor=1.2):
-        """Zoom in by the given factor."""
+        """Zoom in by the given factor.
+
+        Parameters
+        ----------
+        factor : float, default 1.2
+            Scale factor applied to the view.
+        """
         self.view.scale(factor, factor)
     
     def zoom_out(self, factor=0.83):
-        """Zoom out by the given factor."""
+        """Zoom out by the given factor.
+
+        Parameters
+        ----------
+        factor : float, default 0.83
+            Scale factor applied to the view.
+        """
         self.view.scale(factor, factor)
     
     def reset_zoom(self):

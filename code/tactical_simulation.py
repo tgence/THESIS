@@ -1,3 +1,4 @@
+# tactical_simulation.py
 """
 Tactical simulation based on user-drawn arrows.
 
@@ -12,7 +13,19 @@ from PyQt5.QtCore import QPointF
 from config import *
 
 class TacticalSimulationManager:
-    """Manage tactical associations and compute simulated trajectories."""
+    """Manage tactical associations and compute simulated trajectories.
+
+    Parameters
+    ----------
+    annotation_manager : AnnotationManager object
+        Manager exposing user-drawn arrows and selection.
+    pitch_widget : PitchWidget object
+        Pitch widget with `scene` used for drawing.
+    home_ids, away_ids : list[str]
+        Player IDs for each team.
+    home_colors, away_colors : dict
+        Mapping `player_id -> (main_hex, secondary_hex, number_hex)`.
+    """
     
     def __init__(self, annotation_manager, pitch_widget, home_ids, away_ids, home_colors, away_colors):
         self.annotation_manager = annotation_manager
@@ -33,7 +46,24 @@ class TacticalSimulationManager:
         self.simulated_ball_positions = []  # [(x, y, frame), ...]
         
     def associate_arrow_with_player(self, arrow, player_id, current_frame, xy_objects):
-        """Associate a drawn arrow with a player at a given frame."""
+        """Associate a drawn arrow with a player at a given frame.
+
+        Parameters
+        ----------
+        arrow : QGraphicsItemGroup
+            Arrow item to associate.
+        player_id : str
+            Player ID to associate with this arrow.
+        current_frame : int
+            Global frame when the association is made.
+        xy_objects : dict
+            Positions object (not used directly here, but may be used downstream).
+
+        Returns
+        -------
+        str
+            "waiting_for_receiver" for passes, otherwise "associated".
+        """
         arrow_id = id(arrow)
         self.player_associations[arrow_id] = player_id
         
@@ -58,7 +88,18 @@ class TacticalSimulationManager:
         return "associated"
     
     def set_pass_receiver(self, receiver_player_id):
-        """Define the pass receiver for the most recent unassigned pass arrow."""
+        """Define the pass receiver for the most recent unassigned pass arrow.
+
+        Parameters
+        ----------
+        receiver_player_id : str
+            Player ID designated as receiver.
+
+        Returns
+        -------
+        bool
+            True if a pending pass was updated, False otherwise.
+        """
         # Find the most recent pass without a receiver
         for tactical_arrow in reversed(self.tactical_arrows):
             if (tactical_arrow['action_type'] == 'pass' and 
@@ -79,7 +120,18 @@ class TacticalSimulationManager:
         return False
     
     def get_action_type(self, arrow):
-        """Infer action type from arrow style (solid=pass, dotted=run, zigzag=dribble)."""
+        """Infer action type from arrow style.
+
+        Parameters
+        ----------
+        arrow : QGraphicsItemGroup
+            Arrow with `arrow_style` attribute or child pen styles.
+
+        Returns
+        -------
+        {'pass','run','dribble'}
+            Inferred action type: solid=pass, dotted=run, zigzag=dribble.
+        """
         if hasattr(arrow, 'arrow_style'):
             style = arrow.arrow_style
             if style == "dotted":
@@ -102,7 +154,18 @@ class TacticalSimulationManager:
         return 'pass'
     
     def calculate_arrow_length(self, points):
-        """Compute the total Euclidean length of an arrow polyline."""
+        """Compute the total Euclidean length of an arrow polyline.
+
+        Parameters
+        ----------
+        points : list[QPointF]
+            Sequence of points forming the polyline.
+
+        Returns
+        -------
+        float
+            Polyline length.
+        """
         if len(points) < 2:
             return 0
         
@@ -115,7 +178,21 @@ class TacticalSimulationManager:
         return total_length
     
     def calculate_simulated_trajectories(self, interval_seconds, current_frame, xy_objects, n_frames, get_frame_data_func):
-        """Compute positions for players and ball over the simulation interval."""
+        """Compute positions for players and ball over the simulation interval.
+
+        Parameters
+        ----------
+        interval_seconds : float
+            Duration of the simulation window in seconds.
+        current_frame : int
+            Global frame where the simulation starts.
+        xy_objects : dict
+            Positions per half/side and the ball.
+        n_frames : int
+            Total number of frames.
+        get_frame_data_func : callable
+            Function mapping global frame -> (half, half_idx, label).
+        """
         self.simulated_player_positions.clear()
         self.simulated_ball_positions.clear()
         
@@ -174,7 +251,28 @@ class TacticalSimulationManager:
                 ))
     
     def _calculate_player_position_with_speed(self, tactical_arrow, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Position a player along the arrow, capped by plausible action speed."""
+        """Position a player along the arrow, capped by plausible action speed.
+
+        Parameters
+        ----------
+        tactical_arrow : dict
+            Metadata for an associated arrow (start/end, type, length).
+        progress : float
+            Normalized progress in [0, 1] within the simulation window.
+        interval_seconds : float
+            Duration of the simulation window (seconds).
+        current_frame : int
+            Global frame when the simulation starts.
+        xy_objects : dict
+            Positions structure (unused here).
+        get_frame_data_func : callable
+            Global frame -> (half, half_idx, label).
+
+        Returns
+        -------
+        PyQt5.QtCore.QPointF
+            Interpolated player position.
+        """
         start_pos = tactical_arrow['start_pos']
         end_pos = tactical_arrow['end_pos']
         arrow_length = tactical_arrow['length']
@@ -213,7 +311,27 @@ class TacticalSimulationManager:
         return QPointF(x, y)
     
     def _calculate_ball_position_with_speed(self, initial_ball_pos, initial_holder, passes, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Compute ball position given pass speed and receiver path."""
+        """Compute ball position given pass speed and receiver path.
+
+        Parameters
+        ----------
+        initial_ball_pos : QPointF
+        initial_holder : str
+            Initial ball holder player ID.
+        passes : list[dict]
+            Tactical arrows marked as passes.
+        progress : float
+            Progress in [0, 1] of the overall simulation interval.
+        interval_seconds : float
+        current_frame : int
+        xy_objects : dict
+        get_frame_data_func : callable
+
+        Returns
+        -------
+        PyQt5.QtCore.QPointF
+            Ball position at current progress.
+        """
         if not passes:
             # No pass, ball follows initial carrier
             if initial_holder in self.simulated_player_positions:
@@ -270,7 +388,13 @@ class TacticalSimulationManager:
         return initial_ball_pos
     
     def _get_player_position_at_progress(self, player_id, progress, interval_seconds, current_frame, xy_objects, get_frame_data_func):
-        """Return simulated or real player position at a given progress ratio."""
+        """Return simulated or real player position at a given progress ratio.
+
+        Returns
+        -------
+        PyQt5.QtCore.QPointF
+            Player position.
+        """
         # First check if there's a simulated position
         if player_id in self.simulated_player_positions:
             positions = self.simulated_player_positions[player_id]
@@ -286,7 +410,13 @@ class TacticalSimulationManager:
         return self._get_real_player_position(player_id, frame_to_check, xy_objects, get_frame_data_func)
     
     def _get_real_player_position(self, player_id, frame, xy_objects, get_frame_data_func):
-        """Return real player position at a given global frame index."""
+        """Return real player position at a given global frame index.
+
+        Returns
+        -------
+        PyQt5.QtCore.QPointF
+            Player position; (0, 0) if unavailable.
+        """
         half, idx, _ = get_frame_data_func(frame)
         
         # Determine player's team
@@ -307,7 +437,13 @@ class TacticalSimulationManager:
         return QPointF(0, 0)  # Default position
     
     def _find_closest_player_to_ball(self, ball_pos, frame, xy_objects, get_frame_data_func):
-        """Find the player closest to the ball at a frame."""
+        """Find the player closest to the ball at a frame.
+
+        Returns
+        -------
+        str | None
+            Player ID or None if not found.
+        """
         min_distance = float('inf')
         closest_player = None
         
@@ -326,7 +462,21 @@ class TacticalSimulationManager:
         return closest_player
     
     def find_player_at_position(self, click_pos, current_frame, xy_objects, get_frame_data_func, max_distance=PLAYER_OUTER_RADIUS_BASE):
-        """Find the nearest player to an arbitrary click position within a threshold."""
+        """Find the nearest player to an arbitrary click within a threshold.
+
+        Parameters
+        ----------
+        click_pos : PyQt5.QtCore.QPointF
+        current_frame : int
+        xy_objects : dict
+        get_frame_data_func : callable
+        max_distance : float, default config.PLAYER_OUTER_RADIUS_BASE
+
+        Returns
+        -------
+        str | None
+            Closest player ID within threshold, else None.
+        """
         min_distance = float('inf')
         closest_player = None
         
@@ -354,14 +504,26 @@ class TacticalSimulationManager:
         self.simulated_ball_positions.clear()
     
     def get_simulated_trajectories(self):
-        """Return simulated player and ball trajectories for rendering."""
+        """Return simulated player and ball trajectories for rendering.
+
+        Returns
+        -------
+        dict
+            {'players': dict, 'ball': list}
+        """
         return {
             'players': self.simulated_player_positions,
             'ball': self.simulated_ball_positions
         }
     
     def get_non_associated_arrows(self):
-        """Return arrows that are not associated with any player."""
+        """Return arrows that are not associated with any player.
+
+        Returns
+        -------
+        list
+            Arrow items not in the associated set.
+        """
         associated_arrow_ids = {ta['arrow_id'] for ta in self.tactical_arrows}
         all_arrows = self.annotation_manager.arrows
         
@@ -373,11 +535,23 @@ class TacticalSimulationManager:
         return non_associated
     
     def get_associated_arrows(self):
-        """Return a copy of associated arrows with their tactical metadata."""
+        """Return a copy of associated arrows with their tactical metadata.
+
+        Returns
+        -------
+        list[dict]
+            Shallow copy of internal tactical arrows list.
+        """
         return self.tactical_arrows.copy()
     
     def remove_arrow_association(self, arrow):
-        """Remove association for the specified arrow and clean related state."""
+        """Remove association for the specified arrow and clean related state.
+
+        Parameters
+        ----------
+        arrow : QGraphicsItemGroup
+            Arrow item whose association must be removed.
+        """
         arrow_id = id(arrow)
         
         # Remove from tactical_arrows

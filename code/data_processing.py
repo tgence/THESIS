@@ -18,6 +18,8 @@ import xml.etree.ElementTree as ET
 from floodlight.io.dfl import read_position_data_xml, read_event_data_xml
 from scipy.signal import savgol_filter
 from config import *
+
+
 from PyQt5.QtGui import QColor
 
 def safe_color(val, fallback='#aaaaaa'):
@@ -458,9 +460,7 @@ def compute_pressure(
     half,                 # "firstHalf" or "secondHalf"
     idx,                  # index of current frame within the half
     t_threshold=1.2,      # time threshold for pressing probability (s)
-    sigma=0.25,           # sigmoid width for probability mapping
-    max_speed=10.0,       # assumed defender max speed (m/s)
-    speed_threshold=1.5   # minimum speed to be considered (m/s)
+    sigma=0.5,           # sigmoid width for probability mapping
 ):
     """
     Compute defensive pressure around the ball carrier at the given frame.
@@ -484,22 +484,50 @@ def compute_pressure(
             ids = xy_objects[half][side].ids if hasattr(xy_objects[half][side], 'ids') else defenders_ids
             i = ids.index(pid)
             x, y = xy[2*i], xy[2*i+1]
-            v = dsam[side][pid][half]["S"][idx]
-            angle = orientations[pid][idx]
-            vx, vy = v * np.cos(angle), v * np.sin(angle)
-            dist = np.sqrt((px - x)**2 + (py - y)**2)
-            speed = np.linalg.norm([vx, vy])
+
             if np.isnan(x) or np.isnan(y):
-                tti = np.inf
-                proba = 0
-            elif speed < speed_threshold:
-                tti = np.inf
-                proba = 0
+                res.append(0)
+                continue
+
+            # Distance and unit vector from defender to carrier
+            dx, dy = (px - x), (py - y)
+            dist = float(np.hypot(dx, dy))
+            if dist <= 1e-6: # if the defender is at the same position as the carrier, we want to avoid "zero-division"
+                res.append(1.0)
+                continue
+            ux, uy = dx / dist, dy / dist
+
+            # Kinematics along the line to carrier
+            v = float(dsam[side][pid][half]["S"][idx])  # m/s
+            a_mag = dsam[side][pid][half]["A"][idx]
+            # Skip defender if kinematic inputs are missing
+            if np.isnan(v) or np.isnan(a_mag) or np.isnan(orientations[pid][idx]):
+                continue
+            angle = float(orientations[pid][idx]) if pid in orientations and len(orientations[pid]) > idx else 0.0
+
+            # Defender heading unit vector
+            hx, hy = np.cos(angle), np.sin(angle)
+
+            # Project speed and acceleration onto the line to the carrier
+            v0 = v * (hx * ux + hy * uy)  # m/s along (def -> carrier)
+            a_par = a_mag * (hx * ux + hy * uy)  # assume accel along heading
+
+            # Solve 0.5*a*t^2 + v0*t - dist = 0 (constant acceleration along the line)
+            if abs(a_par) < 1e-9:
+                v_eff = v0 if v0 > 0 else 1e-6
+                tti = dist / v_eff
             else:
-                tti = dist / (max_speed + 1e-5)
-                proba = expit((t_threshold - tti) / sigma)
+                disc = v0*v0 + 2.0 * a_par * dist
+                if disc >= 0:
+                    tti = (-v0 + np.sqrt(disc)) / a_par
+                    if tti <= 0:
+                        tti = dist / (v0 if v0 > 0 else 1e-6)
+                else:
+                    tti = dist / (abs(v0) + 1e-6)
+
+            proba = float(expit((t_threshold - tti) / sigma))
             res.append(proba)
-        except Exception as e:
+        except Exception:
             res.append(0)
     # Global pressure (complement of joint non-pressures)
     intensity = 1 - np.prod(1 - np.array(res))

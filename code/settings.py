@@ -1,3 +1,4 @@
+# settings.py
 """
 Visual settings management and dialog.
 
@@ -20,8 +21,10 @@ from config import BALL_COLOR, CONFIG
 class SettingsManager(QObject):
     """Central store for visual settings with Qt signals.
 
+    Notes
+    -----
     Emits granular and aggregate signals when settings change. Updating
-    `player_scale` updates the global `CONFIG.scale` for size-dependent values.
+    ``player_scale`` updates the global ``CONFIG.scale`` for size-dependent values.
     """
     
     # Signals emitted when settings change
@@ -104,7 +107,13 @@ class SettingsManager(QObject):
         self.settingsChanged.emit()
     
     def get_all_settings(self):
-        """Return dictionary with all settings"""
+        """Return dictionary with all settings.
+
+        Returns
+        -------
+        dict
+            Current values for player scale and overlay colors.
+        """
         return {
             'player_scale': self._player_scale,
             'ball_color': self._ball_color,
@@ -114,7 +123,15 @@ class SettingsManager(QObject):
 
 
 class ColorButton(QPushButton):
-    """Push button that displays and lets users pick a color."""
+    """Push button that displays and lets users pick a color.
+
+    Parameters
+    ----------
+    color : str, default '#FFFFFF'
+        Initial color.
+    parent : QWidget, optional
+        Parent widget.
+    """
     
     colorChanged = pyqtSignal(str)
     
@@ -126,7 +143,7 @@ class ColorButton(QPushButton):
         self.clicked.connect(self._on_clicked)
         
     def _on_clicked(self):
-        """Open color selection dialog"""
+        """Open a color selection dialog and emit ``colorChanged`` if accepted."""
         initial = QColor(self._color)
         color = QColorDialog.getColor(initial, self, "Choose color")
         if color.isValid():
@@ -134,7 +151,13 @@ class ColorButton(QPushButton):
             self.colorChanged.emit(color.name())
     
     def update_color(self, color):
-        """Update button color"""
+        """Update button color and style sheet.
+
+        Parameters
+        ----------
+        color : str
+            Hex color string.
+        """
         self._color = color
         self.setStyleSheet(f"""
             QPushButton {{
@@ -148,11 +171,20 @@ class ColorButton(QPushButton):
         """)
     
     def get_color(self):
+        """Return current color string."""
         return self._color
 
 
 class SettingsDialog(QDialog):
-    """Non-modal dialog to adjust player size and overlay colors."""
+    """Non-modal dialog to adjust player size and overlay colors.
+
+    Parameters
+    ----------
+    settings_manager : SettingsManager
+        Settings manager instance used to get/set values.
+    parent : QWidget, optional
+        Parent window.
+    """
     
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
@@ -168,7 +200,7 @@ class SettingsDialog(QDialog):
         self._connect_signals()
         
     def _setup_ui(self):
-        """Configure the UI."""
+        """Configure the dialog layout and widgets."""
         layout = QVBoxLayout(self)
         
         # === Player size group ===
@@ -274,7 +306,7 @@ class SettingsDialog(QDialog):
         )
     
     def _on_size_changed(self, value):
-        """Callback for player size change."""
+        """Handle player size slider change and propagate to settings manager."""
         scale = value / 100.0
         self._update_size_label(value)
         self.settings_manager.player_scale = scale

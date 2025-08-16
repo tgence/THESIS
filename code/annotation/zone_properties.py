@@ -1,3 +1,4 @@
+# zone_properties.py
 """
 Properties panels for tactical zones.
 
@@ -18,7 +19,13 @@ from config import *
 
 # ColorButton class for zone properties
 class ColorButton(QPushButton):
-    """A button that displays a color and opens a color dialog when clicked."""
+    """A button that displays a color and opens a color dialog when clicked.
+
+    Parameters
+    ----------
+    parent : QWidget, optional
+        Parent widget.
+    """
     
     colorChanged = pyqtSignal(str)
     
@@ -59,7 +66,18 @@ class ColorButton(QPushButton):
 
 
 class ZoneProperties(QWidget):
-    """Properties panel for tactical zones with color, width, transparency, and rotation controls."""
+    """Properties panel for tactical zones with color/width/transparency/rotation.
+
+    Signals
+    -------
+    colorChanged : (str)
+    widthChanged : (int)
+    styleChanged : (str)
+    fillAlphaChanged : (int)
+    rotationChanged : (float)
+    deleteRequested : ()
+    propertiesConfirmed : ()
+    """
     
     # Signals
     colorChanged = pyqtSignal(str)
@@ -216,7 +234,13 @@ class ZoneProperties(QWidget):
         self.setEnabled(False)
         
     def set_zone(self, zone):
-        """Set the zone to edit."""
+        """Set the zone to edit.
+
+        Parameters
+        ----------
+        zone : RectangleZoneItem | EllipseZoneItem | None
+            Zone item to edit, or None to disable the panel.
+        """
         self.current_zone = zone
         if zone:
             self.setEnabled(True)
@@ -225,7 +249,7 @@ class ZoneProperties(QWidget):
             self.setEnabled(False)
             
     def _load_zone_properties(self):
-        """Load properties from the current zone."""
+        """Load properties from the current zone into the widgets."""
         if not self.current_zone:
             return
             
@@ -249,19 +273,19 @@ class ZoneProperties(QWidget):
         self.style_combo.setCurrentIndex(1 if current_style == 'dashed' else 0)
         
     def _on_color_changed(self, color):
-        """Handle color change."""
+        """Handle color change and update the current zone if any."""
         if self.current_zone:
             self.current_zone.set_color(color)
         self.colorChanged.emit(color)
         
     def _on_width_changed(self, width):
-        """Handle width change."""
+        """Handle width change and update the current zone if any."""
         if self.current_zone:
             self.current_zone.set_width(width)
         self.widthChanged.emit(width)
     
     def _on_style_changed(self):
-        """Handle line style change."""
+        """Handle line style change and update the current zone if any."""
         style_text = self.style_combo.currentText().lower()
         normalized = 'dashed' if 'dash' in style_text else 'solid'
         if self.current_zone:
@@ -271,24 +295,31 @@ class ZoneProperties(QWidget):
         self.styleChanged.emit(normalized)
         
     def _on_alpha_changed(self, alpha):
-        """Handle fill alpha change."""
+        """Handle fill alpha change and update the current zone if any."""
         self.alpha_label.setText(str(alpha))
         if self.current_zone:
             self.current_zone.set_fill_alpha(alpha)
         self.fillAlphaChanged.emit(alpha)
         
     def _on_rotation_changed(self, angle):
-        """Handle rotation change."""
+        """Handle rotation change and update the current zone if any."""
         if self.current_zone:
             self.current_zone.set_rotation(angle)
         self.rotationChanged.emit(angle)
         
     def _on_reset_rotation(self):
-        """Reset rotation to 0."""
+        """Reset rotation to 0 degrees."""
         self.rotation_spin.setValue(0)
         
     def show_for_zone(self, zone, pos):
-        """Show the properties panel for a specific zone at the given position."""
+        """Show the properties panel for a specific zone at the given position.
+
+        Parameters
+        ----------
+        zone : RectangleZoneItem | EllipseZoneItem
+        pos : QPoint
+            Screen position for the popup.
+        """
         self.set_zone(zone)
         self.move(pos)
         self.show()

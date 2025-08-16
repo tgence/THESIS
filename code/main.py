@@ -34,8 +34,10 @@ from camera.camera_controls import CameraControlWidget
 from settings import SettingsManager, SettingsDialog
 from config import *
 
-from qt_material import apply_stylesheet
+import qt_material
 
+# Toggle to trace offside computation in console
+OFFSIDE_DEBUG = False
 
 # ===== Centralized data loading =====
 data = load_data(
@@ -72,14 +74,41 @@ Y_MIN, Y_MAX = pitch_info.ylim
 
 
 def get_frame_data(frame_number):
-    """Tiny helper to map a global frame to (half, index, nice label)."""
+    """Map a global frame index to half-relative info.
+
+    Parameters
+    ----------
+    frame_number : int
+        Global frame index in [0, n_frames).
+
+    Returns
+    -------
+    tuple[str, int, str]
+        (half_key, half_relative_index, half_label)
+        where half_key ∈ {"firstHalf","secondHalf"} and half_label ∈ {"1st Half","2nd Half"}.
+    """
     if frame_number < n_frames_firstHalf:
         return "firstHalf", frame_number, "1st Half"
     else:
         return "secondHalf", frame_number - n_frames_firstHalf, "2nd Half"
 
 def get_possession_for_frame(possession, half, frame_idx):
-    """Return "Home", "Away" or None for the given half-relative frame."""
+    """Return possession team for a half-relative frame.
+
+    Parameters
+    ----------
+    possession : dict
+        Floodlight-like structure with `.code` arrays per half (0 none, 1 Home, 2 Away).
+    half : str
+        "firstHalf" or "secondHalf".
+    frame_idx : int
+        Index within the half.
+
+    Returns
+    -------
+    str | None
+        "Home", "Away" or None if no possession.
+    """
     poss_val = possession[half].code[frame_idx]
     if poss_val == 1:
         return "Home"
@@ -88,29 +117,105 @@ def get_possession_for_frame(possession, half, frame_idx):
     else:
         return None
     
-def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, away_ids, teams_df, last_positions):
-    """Estimate a simple offside line X for the defending team.
+def _detect_home_side_first_half(xy_objects, home_ids, away_ids):
+    """Detect whether the Home team defends left or right in the first half.
 
-    This looks at non-keeper defenders and returns the extremal X (max for Home,
-    min for Away) using last known positions if current is NaN.
+    Strategy
+    --------
+    - Use the first N frames of the first half
+    - Compute the per-frame median X of Home and Away (robust to outliers/NaNs)
+    - Average medians across frames
+    - If Home median < Away median ⇒ Home is on the left; else right
+
+    Parameters
+    ----------
+    xy_objects : dict
+        Positions per half and side.
+    home_ids, away_ids : list[str]
+        Player IDs.
+
+    Returns
+    -------
+    {'left','right'}
+        Side defended by the Home team in the first half.
+    """
+    try:
+        xy_home = xy_objects['firstHalf']['Home'].xy
+        xy_away = xy_objects['firstHalf']['Away'].xy
+    except Exception:
+        # Fallback assumption
+        return 'left'
+    n_frames = min(len(xy_home), len(xy_away))
+    if n_frames <= 0:
+        return 'left'
+    n_use = 50
+    home_meds = []
+    away_meds = []
+    for f in range(n_use):
+        xs_home = []
+        xs_away = []
+        xh = xy_home[f]; xa = xy_away[f]
+        for i, _pid in enumerate(home_ids):
+            x = xh[2*i]
+            if not np.isnan(x):
+                xs_home.append(x)
+        for i, _pid in enumerate(away_ids):
+            x = xa[2*i]
+            if not np.isnan(x):
+                xs_away.append(x)
+        if xs_home:
+            home_meds.append(float(np.median(xs_home)))
+        if xs_away:
+            away_meds.append(float(np.median(xs_away)))
+    if not home_meds or not away_meds:
+        # Fallback to center split if something went wrong
+        center_x = (X_MIN + X_MAX) / 2.0
+        mean_home = np.nanmean([xy_home[0][2*i] for i, _ in enumerate(home_ids)])
+        return 'left' if mean_home < center_x else 'right'
+    home_avg = float(np.mean(home_meds))
+    away_avg = float(np.mean(away_meds))
+    return 'left' if home_avg < away_avg else 'right'
+
+# Precompute team sides per half
+_HOME_SIDE_FIRST = _detect_home_side_first_half(xy_objects, home_ids, away_ids)
+_HOME_SIDE_SECOND = 'right' if _HOME_SIDE_FIRST == 'left' else 'left'
+_SIDES_BY_HALF = {
+    'firstHalf': {'Home': _HOME_SIDE_FIRST, 'Away': ('right' if _HOME_SIDE_FIRST == 'left' else 'left')},
+    'secondHalf': {'Home': _HOME_SIDE_SECOND, 'Away': ('right' if _HOME_SIDE_SECOND == 'left' else 'left')},
+}
+
+def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, away_ids, teams_df, last_positions):
+    """Compute offside line X based on second-last defender toward own goal.
+
+    Parameters
+    ----------
+    xy_objects : dict
+        Positions per half and side.
+    half : {'firstHalf','secondHalf'}
+    frame_idx : int
+        Index within the half.
+    possession_team : str | None
+        Team in possession ("Home"/"Away"). Determines defending side.
+    home_ids, away_ids : list[str]
+    teams_df : pandas.DataFrame
+        Unused here (kept for compatibility).
+    last_positions : dict
+        Fallback last-known X per player if current X is NaN.
+
+    Returns
+    -------
+    float | None
+        X coordinate for the offside line, or None if unavailable.
     """
     defending_team = "Home" if possession_team == "Away" else "Away"
     player_ids_team = home_ids if defending_team == "Home" else away_ids
-    team_name = teams_df[teams_df['PersonId'] == player_ids_team[0]]['team'].iloc[0]
+    # Which side this defending team occupies in this half
+    defending_side = _SIDES_BY_HALF.get(half, {}).get(defending_team, 'left')
 
-    gk_ids = set(
-        teams_df[
-            (teams_df['team'] == team_name)
-            & (teams_df['PlayingPosition'].str.lower().str.contains('tw', na=False))
-        ]['PersonId']
-    )
-
+    # Get X for all 11 defending players (including GK)
     xy = xy_objects[half][defending_team].xy[frame_idx]
     x_coords = []
-
     for i, pid in enumerate(player_ids_team):
-        if pid in gk_ids:
-            continue
         x = xy[2*i]
         if np.isnan(x):
             x = last_positions[defending_team].get(pid, (np.nan, np.nan))[0]
@@ -119,12 +224,34 @@ def get_offside_line_x(xy_objects, half, frame_idx, possession_team, home_ids, a
 
     if not x_coords:
         return None
-
-    return max(x_coords) if defending_team == "Home" else min(x_coords)
+    # Sort positions and choose second defender toward own goal line
+    xs_sorted = sorted(x_coords)
+    if defending_side == 'left':
+        # Own goal on the left → smaller X are nearer own goal → take 2nd smallest
+        chosen = xs_sorted[1] if len(xs_sorted) >= 2 else xs_sorted[0]
+        last3 = xs_sorted[:3]
+    else:
+        # Own goal on the right → larger X are nearer own goal → take 2nd largest
+        chosen = xs_sorted[-2] if len(xs_sorted) >= 2 else xs_sorted[-1]
+        last3 = xs_sorted[-3:]
+    # No debug prints when OFFSIDE_DEBUG is False
+    return chosen
 
 class MainWindow(QWidget):
     """Main application window for Tactikz with timeline and tools panels."""
     def __init__(self):
+        """Construct the main window and initialize UI/managers/state.
+
+        Notes
+        -----
+        - Builds the left panel (score, theme switcher, pitch, timeline) and the
+          right tools panel (camera controls, simulation, annotations).
+        - Loads actions from events, precomputes and caches color themes, then
+          applies the current theme.
+        - Instantiates managers: frames, trajectories, annotations, tactical
+          simulation, score, camera, and settings, and wires their signals.
+        - Sets the initial camera view to "full" after the first render.
+        """
         super().__init__()
         self.setWindowTitle("Tactikz")
         self.resize(1700, 1000)
@@ -282,7 +409,13 @@ class MainWindow(QWidget):
 
     
     def _create_timeline_controls(self, parent_layout):
-        """Create timeline slider, nav buttons, speed, play/pause, and overlays."""
+        """Create timeline slider, nav buttons, speed, play/pause, and overlays.
+
+        Parameters
+        ----------
+        parent_layout : QBoxLayout
+            Layout to which the timeline controls will be added.
+        """
         control_layout = QHBoxLayout()
         nav_layout = QHBoxLayout()
         nav_layout.addWidget(create_nav_button("< 1m", NAV_BUTTON_WIDTH, NAV_BUTTON_HEIGHT, -60 * FPS, "Back 1 minute", self.jump_frames))
@@ -601,7 +734,13 @@ class MainWindow(QWidget):
         self.loop_times_label.setText(f"Loop: {start_time} → {end_time}")
 
     def update_simulation_interval(self, value):
-        """Change the future interval (in seconds) and recompute loop bounds."""
+        """Change the future interval (in seconds) and recompute loop bounds.
+
+        Parameters
+        ----------
+        value : float
+            Interval in seconds to preview or simulate.
+        """
         if self.simulation_mode:
             current_frame = self.simulation_start_frame
             interval_frames = int(value * FPS)
@@ -613,7 +752,13 @@ class MainWindow(QWidget):
                 self.update_scene(self.timeline_widget.value())
 
     def update_scene(self, frame_number):
-        """Redraw everything for the given global frame: pitch, players, ball, overlays."""
+        """Redraw everything for a global frame: pitch, players, ball, overlays.
+
+        Parameters
+        ----------
+        frame_number : int
+            Global frame index to render.
+        """
         self._update_score_display(frame_number)
         
         if (self.simulation_mode and 
@@ -671,7 +816,6 @@ class MainWindow(QWidget):
         ball_x, ball_y = ball_xy[0], ball_xy[1]
         self.pitch_widget.draw_ball(ball_x, ball_y, color=self.settings_manager.ball_color)
         
-        # === NEW: Update ball position in camera manager ===
         self.camera_manager.update_ball_position(ball_x, ball_y)
         
         # Offside
@@ -694,7 +838,15 @@ class MainWindow(QWidget):
         self.info_label.setText(f"{halftime} \n{match_time}  \nFrame {get_frame_data(frame_number)[1]}")
 
     def _draw_players(self, half, idx):
-        """Draw all players for the given half/index with colors, number, and orientation."""
+        """Draw all players for a half/index with colors, numbers, and orientation.
+
+        Parameters
+        ----------
+        half : {'firstHalf','secondHalf'}
+            Current half.
+        idx : int
+            Frame index within the half.
+        """
         for side, ids, colors in [("Home", home_ids, home_colors), 
                                  ("Away", away_ids, away_colors)]:
             xy = xy_objects[half][side].xy[idx]
@@ -718,7 +870,13 @@ class MainWindow(QWidget):
                     continue
     
     def jump_frames(self, n):
-        """Jump forward/backward by N frames, respecting simulation loop rules."""
+        """Jump forward/backward by N frames, respecting simulation loop rules.
+
+        Parameters
+        ----------
+        n : int
+            Number of frames to move (+ forward, − backward).
+        """
         if self.simulation_mode and self.is_playing:
             return
             
@@ -752,7 +910,13 @@ class MainWindow(QWidget):
         self.is_playing = not self.is_playing
 
     def update_speed(self, idx):
-        """Set timer interval from speed combo (index -> ms)."""
+        """Set timer interval from speed combo (index → milliseconds).
+
+        Parameters
+        ----------
+        idx : int
+            Index into predefined timer intervals.
+        """
         intervals = [160, 80, 40, 20, 10, 5]
         self.timer.setInterval(intervals[idx])
 
@@ -781,7 +945,13 @@ class MainWindow(QWidget):
 
     # Annotation methods
     def set_tool_mode(self, mode):
-        """Switch between select/arrow/curve tools and update cursor + state."""
+        """Switch between select/arrow/curve tools and update cursor + state.
+
+        Parameters
+        ----------
+        mode : {'select','arrow','curve','rectangle_zone','ellipse_zone'}
+            Tool to activate.
+        """
         self.current_tool = mode
         self.select_button.setChecked(mode == "select")
         self.arrow_button.setChecked(mode == "arrow")
@@ -869,7 +1039,13 @@ class MainWindow(QWidget):
     
     # === NEW: Camera event handlers ===
     def _on_camera_mode_changed(self, mode):
-        """Update camera preset when a mode button is clicked."""
+        """Update camera preset when a mode button is clicked.
+
+        Parameters
+        ----------
+        mode : str
+            Camera mode key.
+        """
         success = self.camera_manager.set_camera_mode(mode, animate=True)
         if success:
             # Update ball tracking status
@@ -902,7 +1078,20 @@ class MainWindow(QWidget):
 
 
     def eventFilter(self, obj, event):
-        """Route mouse events to selection/creation logic depending on tool."""
+        """Route mouse events to selection/creation logic depending on tool.
+
+        Parameters
+        ----------
+        obj : QObject
+            Watched object.
+        event : QEvent
+            Event received.
+
+        Returns
+        -------
+        bool
+            True if the event is fully handled here; otherwise False.
+        """
         if obj != self.pitch_widget.view.viewport():
             return False
         
@@ -1044,7 +1233,18 @@ class MainWindow(QWidget):
         return False
     
     def _find_arrow_at_position(self, scene_pos):
-        """Look for an arrow item under the pointer within a small tolerance box."""
+        """Look for an arrow item under the pointer within a small tolerance box.
+
+        Parameters
+        ----------
+        scene_pos : QPointF
+            Position in scene coordinates.
+
+        Returns
+        -------
+        QGraphicsItemGroup | None
+            The arrow item if found; otherwise None.
+        """
         # Search scene items within a tolerance zone
         tolerance = 5.0  # pixels tolerance
         search_rect = QRectF(scene_pos.x() - tolerance, scene_pos.y() - tolerance, 
@@ -1062,7 +1262,18 @@ class MainWindow(QWidget):
         return None
 
     def _find_zone_at_position(self, scene_pos):
-        """Look for a zone item under the pointer within a small tolerance box."""
+        """Look for a zone item under the pointer within a small tolerance box.
+
+        Parameters
+        ----------
+        scene_pos : QPointF
+            Position in scene coordinates.
+
+        Returns
+        -------
+        QGraphicsItemGroup | None
+            The zone item if found; otherwise None.
+        """
         # Search scene items within a tolerance zone
         tolerance = 5.0  # pixels tolerance (increased for easier detection)
         search_rect = QRectF(scene_pos.x() - tolerance, scene_pos.y() - tolerance, 
@@ -1161,7 +1372,8 @@ class MainWindow(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    apply_stylesheet(app, theme='dark_blue.xml', invert_secondary=False)
+    # Ensure fonts API is available for qt_material; import order is PyQt5 then qt_material
+    qt_material.apply_stylesheet(app, theme='dark_blue.xml', invert_secondary=False)
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())

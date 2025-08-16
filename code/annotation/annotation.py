@@ -1,3 +1,4 @@
+# annotation.py
 """
 Annotation management on the pitch scene.
 
@@ -23,7 +24,17 @@ HANDLE_SIZE = 1  # Size of corner handles in pixels
 
 
 class ResizeHandle(QGraphicsRectItem):
-    """Small square handle for resizing objects at corners."""
+    """Small square handle for resizing objects at corners.
+
+    Parameters
+    ----------
+    corner_type : {'top_left','top_right','bottom_left','bottom_right'}
+        Which corner this handle controls.
+    parent_item : QGraphicsItemGroup
+        Parent item owning the selection rectangle.
+    color : str, default '#000000'
+        Handle color.
+    """
     
     def __init__(self, corner_type, parent_item, color="#000000"):
         super().__init__()
@@ -38,7 +49,7 @@ class ResizeHandle(QGraphicsRectItem):
         self.setPen(QPen(QColor(color), 0.1))
         self.setBrush(QBrush(QColor(color)))
         self.setZValue(1001)  # Above selection rectangle
-        
+
         # Set cursor based on corner type
         cursor_map = {
             'top_left': Qt.SizeFDiagCursor,
@@ -90,7 +101,13 @@ class ResizeHandle(QGraphicsRectItem):
 
 class ArrowAnnotationManager:
     def __init__(self, scene):
-        """Manage creation, preview, selection, and storage of arrow items."""
+        """Manage creation, preview, selection, and storage of arrow items.
+
+        Parameters
+        ----------
+        scene : QGraphicsScene
+            Scene where arrows are created/managed.
+        """
         self.scene = scene
         self.arrows = []
         self.arrow_points = []
@@ -259,7 +276,16 @@ class ArrowAnnotationManager:
         self.clear_selection()
 
 class CustomArrowItem(QGraphicsItemGroup):
-    """Composite arrow item with a thin selection rectangle overlay."""
+    """Composite arrow item with a thin selection rectangle overlay.
+
+    Parameters
+    ----------
+    arrow_points : list[QPointF]
+    color : str
+    width : float
+    style : {'solid','dotted','zigzag'}
+    parent : QGraphicsItem | None
+    """
     def __init__(self, arrow_points, color, width, style, parent=None):
         super().__init__(parent)
         self.arrow_points = list(arrow_points)
@@ -296,7 +322,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         super().paint(painter, option_modified, widget)
 
     def _create_selection_rect(self):
-        """Create rectangle with thin outline"""
+        """Create selection rectangle with a thin outline."""
         min_x = min(p.x() for p in self.arrow_points)
         max_x = max(p.x() for p in self.arrow_points)
         min_y = min(p.y() for p in self.arrow_points)
@@ -321,7 +347,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._create_resize_handles()
 
     def setSelected(self, selected):
-        """Show/hide selection rectangle and handles"""
+        """Show/hide selection rectangle and handles."""
         self._selected_state = selected
         if self._selection_rect:
             self._selection_rect.setVisible(selected)
@@ -382,7 +408,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
     
     def update_resize(self, corner_type, scene_pos):
-        """Update arrow points during resize operation."""
+        """Update arrow points during an active resize operation."""
         if not self._is_resizing or not self._original_points:
             return
             
@@ -448,7 +474,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._update_handles_position()
     
     def end_resize(self):
-        """End resize operation."""
+        """End resize operation and re-enable movement."""
         self._is_resizing = False
         self._resize_corner = None
         self._resize_start_pos = None
@@ -529,7 +555,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._draw_arrow_components()
 
     def _draw_items(self):
-        """Draw arrow AND update rectangle"""
+        """Draw arrow components and update selection rectangle."""
         # Remove previous arrow sub-items
         for item in [self._body_item, self._head_item]:
             if item is not None:
@@ -582,7 +608,7 @@ class CustomArrowItem(QGraphicsItemGroup):
 
         # Create body item
         self._body_item = QGraphicsPathItem(body_path)
-        pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.3)
+        pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.1)
         if self.arrow_style == "dotted":
             pen.setStyle(Qt.DashLine)
         else:
@@ -670,7 +696,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         return path
 
     def _create_zigzag_path(self, pts):
-        """Simplified zigzag version"""
+        """Create a simplified zigzag path through points."""
         if len(pts) < 2:
             return QPainterPath()
         path = QPainterPath()
@@ -699,7 +725,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         self.to_player = player_id
 
     def refresh_visual(self):
-        """Update display after property changes"""
+        """Update display after property changes."""
         # Preserve selection state
         was_selected = self.isSelected()
         
@@ -735,7 +761,7 @@ class RectangleZoneManager:
         self.current_mode = "select"
         
     def set_mode(self, mode):
-        """Set the current mode."""
+        """Set the current mode (select/create)."""
         self.current_mode = mode
         self.zone_points = []
         self.remove_zone_preview()

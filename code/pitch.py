@@ -1,3 +1,4 @@
+# pitch.py
 """
 Pitch rendering with PyQt GraphicsScene.
 
@@ -21,7 +22,15 @@ from data_processing import get_pressure_color, build_ball_carrier_array
 from config import *
 
 class PitchWidget(QWidget):
-    """Graphics widget to display a soccer pitch and dynamic overlays."""
+    """Graphics widget to display a soccer pitch and dynamic overlays.
+
+    Parameters
+    ----------
+    X_MIN, X_MAX, Y_MIN, Y_MAX : float
+        Pitch bounds in scene coordinates.
+    parent : QWidget, optional
+        Parent widget.
+    """
     def __init__(self, X_MIN, X_MAX, Y_MIN, Y_MAX, parent=None):
         super().__init__(parent)
         self.X_MIN = X_MIN
@@ -229,6 +238,7 @@ class PitchWidget(QWidget):
         self.pitch_items.append(right_arc)
 
     def resizeEvent(self, event):
+            """Fit the entire pitch rect on widget resize (keeps aspect ratio)."""
             super().resizeEvent(event)
             MARGIN = SCENE_EXTRA_GRASS
             rect = QRectF(
@@ -243,7 +253,27 @@ class PitchWidget(QWidget):
     def draw_player(self, x, y, main_color, sec_color, num_color, number, 
                 angle=0, velocity=0, display_orientation=False, z_offset=10, 
                 arrow_color=None):
-        """Draw a bi-color player disc with optional orientation arrow."""
+        """Draw a bi-color player disc with optional orientation arrow.
+
+        Parameters
+        ----------
+        x, y : float
+            Player center coordinates.
+        main_color, sec_color, num_color : str
+            Hex colors for top half, bottom half, and number.
+        number : int | str
+            Shirt number (displayed on the disc).
+        angle : float, default 0
+            Orientation angle in radians.
+        velocity : float, default 0
+            Player speed (m/s), used to scale the orientation arrow.
+        display_orientation : bool, default False
+            Whether to draw the orientation arrow.
+        z_offset : float, default 10
+            Z stacking base.
+        arrow_color : str | None
+            Hex color for orientation arrow (defaults to theme arrow color).
+        """
     
         # Use theme color if arrow_color is not provided
         if arrow_color is None:
@@ -341,7 +371,20 @@ class PitchWidget(QWidget):
 
 
     def draw_ball(self, x, y, color=None):
-        """Draw the ball at (x, y)."""
+        """Draw the ball at (x, y).
+
+        Parameters
+        ----------
+        x, y : float
+            Ball center coordinates.
+        color : str | None
+            Hex color; defaults to theme ball color.
+
+        Returns
+        -------
+        QGraphicsEllipseItem
+            The created ball item.
+        """
         if color is None:
             color = BALL_COLOR
         
@@ -358,7 +401,22 @@ class PitchWidget(QWidget):
 
 
     def draw_offside_line(self, x_offside, visible=True, color=None):
-        """Draw vertical offside line at x coordinate if visible and defined."""
+        """Draw vertical offside line at x coordinate if visible and defined.
+
+        Parameters
+        ----------
+        x_offside : float | None
+            X coordinate for offside line; if None, nothing is drawn.
+        visible : bool, default True
+            Toggle visibility.
+        color : str | None
+            Hex color; defaults to theme offside color.
+
+        Returns
+        -------
+        QGraphicsLineItem | None
+            The created line or None.
+        """
         if not visible:
             return None
         
@@ -375,12 +433,21 @@ class PitchWidget(QWidget):
 
 
     def draw_pressure(self, x, y, color, opacity=0.5):
-        """
-        Draw a translucent circle to represent a pressure area.
-        - x, y: center in meters
-        - radius: meters (defaults to ~player size)
-        - color: hex or rgba
-        - opacity: 0..1
+        """Draw a translucent circle to represent local pressure.
+
+        Parameters
+        ----------
+        x, y : float
+            Center coordinates.
+        color : str | QColor
+            Fill color.
+        opacity : float, default 0.5
+            Opacity in [0, 1].
+
+        Returns
+        -------
+        QGraphicsEllipseItem
+            The created pressure disk.
         """
 
         ellipse = QGraphicsEllipseItem(
@@ -413,7 +480,37 @@ class PitchWidget(QWidget):
     ):
         """Draw pressure zone around the ball carrier if ball is active.
 
-        The color encodes pressure intensity while radius remains fixed.
+        Parameters
+        ----------
+        xy_objects : dict
+            Positions per half/side and ball.
+        home_ids, away_ids : list[str]
+            Player IDs.
+        dsam : dict
+            DSAM metrics per player.
+        orientations : dict
+            Player orientations (radians).
+        half : {'firstHalf','secondHalf'}
+            Current half.
+        idx : int
+            Frame index within the half.
+        ball_xy : tuple[float, float]
+            Ball position at this frame.
+        pressure_fn : callable
+            Function computing pressure intensity in [0, 1].
+        ball_carrier_array : list[tuple[str|None,str|None]]
+            Carrier ID and side per global frame.
+        ballstatus : array-like | dict
+            Ball activity flags per frame or per-half.
+        frame_number : int, default 0
+            Global frame index.
+        visible : bool, default True
+            Toggle to draw or skip.
+
+        Returns
+        -------
+        float | None
+            Pressure intensity if drawn; None otherwise.
         """
         if not visible:
             return None

@@ -6,7 +6,19 @@ Score extraction from events to display running score by frame.
 from config import *
 
 class ScoreManager:
-    """Compute running score (home/away) at any frame using events."""
+    """Compute running score (home/away) at any frame using events.
+
+    Parameters
+    ----------
+    events : dict
+        Floodlight events structure grouped by segment and team.
+    home_team_name, away_team_name : str
+        Team names used in the event data.
+    n_frames_firstHalf : int
+        Frames in the first half (for computing second-half offsets).
+    fps : int, default config.FPS
+        Frames per second for time→frame conversion.
+    """
     
     def __init__(self, events, home_team_name, away_team_name, n_frames_firstHalf, fps=FPS):
         self.home_team_name = home_team_name
@@ -56,7 +68,18 @@ class ScoreManager:
         self.goals.sort(key=lambda x: x['frame'])
         
     def get_score_at_frame(self, frame):
-        """Return (home_score, away_score) at the provided global frame index."""
+        """Return (home_score, away_score) at the provided global frame index.
+
+        Parameters
+        ----------
+        frame : int
+            Global frame index.
+
+        Returns
+        -------
+        tuple[int, int]
+            Home and Away scores at or before the given frame.
+        """
         home_score = 0
         away_score = 0
         
@@ -83,5 +106,11 @@ class ScoreManager:
         return home_score, away_score
     
     def get_all_goals(self):
-        """Return all parsed goals (for debugging/inspection)."""
+        """Return all parsed goals (for debugging/inspection).
+
+        Returns
+        -------
+        list[dict]
+            Goal entries with 'frame', 'team_key', and raw fields.
+        """
         return self.goals
