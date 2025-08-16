@@ -1,3 +1,4 @@
+python==3.12.2
 colormath==3.0.0
 floodlight==1.0.0
 numpy==2.3.2
