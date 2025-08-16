@@ -8,13 +8,13 @@ annotations, tactical simulation, camera controls, and theme/settings.
 import os
 import sys
 import numpy as np
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QPushButton,
     QLabel, QComboBox, QCheckBox, QColorDialog, QSpinBox, QButtonGroup,
-    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton, QMenu, QAction, QSizePolicy
+    QRadioButton, QGroupBox, QDoubleSpinBox, QToolButton, QMenu, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QTimer, QEvent, QDir, QSize, QRectF
-from PyQt5.QtGui import QColor, QIcon, QFont
+from PyQt6.QtCore import QTimer, QEvent, QDir, QSize, QRect, QRectF, Qt
+from PyQt6.QtGui import QColor, QIcon, QFont, QAction
 
 # Local imports
 from pitch import PitchWidget
@@ -322,9 +322,9 @@ class MainWindow(QWidget):
 
         # SCORE on the left
         self.score_label = QLabel()
-        self.score_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.score_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._update_score_display(0)
-        self.score_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        self.score_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         score_layout.addWidget(self.score_label)  # priority + large
 
         # Flexible spacer (takes all remaining space)
@@ -348,7 +348,7 @@ class MainWindow(QWidget):
         self.settings_button = QPushButton("Visual Settings")
         self.settings_button.setToolTip("Visual Settings")
         self.settings_button.clicked.connect(self._show_settings)
-        self.settings_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        self.settings_button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
         score_layout.addWidget(self.settings_button, 0)
 
         
@@ -462,7 +462,7 @@ class MainWindow(QWidget):
         self.play_button.setIcon(self.play_icon)
         self.play_button.setIconSize(QSize(24, 24))
         self.play_button.setText("")
-        self.play_button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        self.play_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         
         self.play_button.setStyleSheet("""
             QToolButton {
@@ -488,8 +488,8 @@ class MainWindow(QWidget):
         # === Visual overlays button with menu ===
         self.visual_overlays_button = QToolButton()
         self.visual_overlays_button.setText("Visual overlays")
-        self.visual_overlays_button.setPopupMode(QToolButton.InstantPopup)
-        self.visual_overlays_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.visual_overlays_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.visual_overlays_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.visual_overlays_button.setStyleSheet("""
         QToolButton {
             font-size: 12px;
@@ -526,7 +526,7 @@ class MainWindow(QWidget):
 
         # Info label
         self.info_label = QLabel("")
-        self.info_label.setAlignment(Qt.AlignCenter)
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.info_label.setFixedWidth(100)
         control_layout.addWidget(self.info_label)
         
@@ -688,7 +688,7 @@ class MainWindow(QWidget):
         # Event filters
         self.installEventFilter(self)
         self.pitch_widget.view.viewport().installEventFilter(self)
-        self.pitch_widget.view.viewport().setFocusPolicy(Qt.StrongFocus)
+        self.pitch_widget.view.viewport().setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.pitch_widget.view.viewport().setFocus()
     
 
@@ -958,7 +958,7 @@ class MainWindow(QWidget):
         self.curve_button.setChecked(mode == "curve")
         self.rectangle_zone_button.setChecked(mode == "rectangle_zone")
         self.ellipse_zone_button.setChecked(mode == "ellipse_zone")
-        self.pitch_widget.view.setCursor(Qt.ArrowCursor if mode == "select" else Qt.CrossCursor)
+        self.pitch_widget.view.setCursor(Qt.CursorShape.ArrowCursor if mode == "select" else Qt.CursorShape.CrossCursor)
         
         if mode == "select":
             self.annotation_manager.try_finish_arrow()
@@ -1097,14 +1097,14 @@ class MainWindow(QWidget):
         
         if self.current_tool == "select":
             # In select mode: handle only initial clicks
-            if event.type() == QEvent.MouseButtonPress:
-                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            if event.type() == QEvent.Type.MouseButtonPress:
+                scene_pos = self.pitch_widget.view.mapToScene(event.position().toPoint())
                 clicked_arrow = self._find_arrow_at_position(scene_pos)
                 clicked_zone = self._find_zone_at_position(scene_pos)
                 
 
                                 
-                if event.button() == Qt.LeftButton:
+                if event.button() == Qt.MouseButton.LeftButton:
                     if clicked_arrow:
                         # Simple left click: select only
                         self.annotation_manager.select_arrow(clicked_arrow)
@@ -1129,16 +1129,17 @@ class MainWindow(QWidget):
                         self.ellipse_zone_manager.clear_selection()
                         return True  # We can intercept this
                         
-                elif event.button() == Qt.RightButton:
+                elif event.button() == Qt.MouseButton.RightButton:
                     if clicked_arrow:
                         # Right click: select AND open properties menu
                         self.annotation_manager.select_arrow(clicked_arrow)
                         self.rectangle_zone_manager.clear_selection()
                         self.ellipse_zone_manager.clear_selection()
                         
-                        global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
+                        global_pos = self.pitch_widget.view.mapToGlobal(event.position().toPoint())
                         # Adjust position to keep menu within screen bounds
-                        screen_geometry = QApplication.desktop().screenGeometry()
+                        screen = QApplication.primaryScreen()
+                        screen_geometry = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
                         if global_pos.x() + 300 > screen_geometry.width():
                             global_pos.setX(global_pos.x() - 300)
                         if global_pos.y() + 500 > screen_geometry.height():
@@ -1159,9 +1160,10 @@ class MainWindow(QWidget):
                             self.ellipse_zone_manager.select_zone(clicked_zone)
                             self.rectangle_zone_manager.clear_selection()
                         
-                        global_pos = self.pitch_widget.view.mapToGlobal(event.pos())
+                        global_pos = self.pitch_widget.view.mapToGlobal(event.position().toPoint())
                         # Adjust position to keep menu within screen bounds
-                        screen_geometry = QApplication.desktop().screenGeometry()
+                        screen = QApplication.primaryScreen()
+                        screen_geometry = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
                         if global_pos.x() + 300 > screen_geometry.width():
                             global_pos.setX(global_pos.x() - 300)
                         if global_pos.y() + 500 > screen_geometry.height():
@@ -1176,35 +1178,35 @@ class MainWindow(QWidget):
         
         # Arrow creation modes (arrow/curve) - existing logic
         if self.current_tool in ("arrow", "curve"):
-            if event.type() == QEvent.MouseButtonPress:
-                if event.button() == Qt.LeftButton:
-                    scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    scene_pos = self.pitch_widget.view.mapToScene(event.position().toPoint())
                     self.annotation_manager.add_point(scene_pos)
                     
                     if not self.annotation_manager.arrow_curved and len(self.annotation_manager.arrow_points) == 2:
                         self.annotation_manager.finish_arrow()
                         self.set_tool_mode("select")
-                elif event.button() == Qt.RightButton:
+                elif event.button() == Qt.MouseButton.RightButton:
                     if len(self.annotation_manager.arrow_points) < 2:
                         self.annotation_manager.cancel_arrow()
                         self.set_tool_mode("select")
                 return True
             
-            elif event.type() == QEvent.MouseMove and self.annotation_manager.arrow_points:
-                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            elif event.type() == QEvent.Type.MouseMove and self.annotation_manager.arrow_points:
+                scene_pos = self.pitch_widget.view.mapToScene(event.position().toPoint())
                 self.annotation_manager.update_preview(scene_pos)
                 return True
         
         # Zone creation modes (rectangle/ellipse)
         elif self.current_tool in ("rectangle_zone", "ellipse_zone"):
-            if event.type() == QEvent.MouseButtonPress:
-                if event.button() == Qt.LeftButton:
-                    scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    scene_pos = self.pitch_widget.view.mapToScene(event.position().toPoint())
                     if self.current_tool == "rectangle_zone":
                         self.rectangle_zone_manager.add_point(scene_pos)
                     else:
                         self.ellipse_zone_manager.add_point(scene_pos)
-                elif event.button() == Qt.RightButton:
+                elif event.button() == Qt.MouseButton.RightButton:
                     if self.current_tool == "rectangle_zone":
                         self.rectangle_zone_manager.cancel_zone()
                     else:
@@ -1212,16 +1214,16 @@ class MainWindow(QWidget):
                     self.set_tool_mode("select")
                 return True
             
-            elif event.type() == QEvent.MouseMove:
-                scene_pos = self.pitch_widget.view.mapToScene(event.pos())
+            elif event.type() == QEvent.Type.MouseMove:
+                scene_pos = self.pitch_widget.view.mapToScene(event.position().toPoint())
                 if self.current_tool == "rectangle_zone":
                     self.rectangle_zone_manager.update_preview(scene_pos)
                 else:
                     self.ellipse_zone_manager.update_preview(scene_pos)
                 return True
             
-            elif event.type() == QEvent.MouseButtonRelease:
-                if event.button() == Qt.LeftButton:
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.LeftButton:
                     if self.current_tool == "rectangle_zone":
                         if self.rectangle_zone_manager.finish_zone():
                             self.set_tool_mode("select")
@@ -1372,8 +1374,8 @@ class MainWindow(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    # Ensure fonts API is available for qt_material; import order is PyQt5 then qt_material
+    # Ensure import order: PyQt first, then qt_material
     qt_material.apply_stylesheet(app, theme='dark_blue.xml', invert_secondary=False)
     win = MainWindow()
     win.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

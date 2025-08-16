@@ -5,11 +5,10 @@ Annotation management on the pitch scene.
 Supports arrows, rectangles, and ellipses with selection/move and visual property updates.
 Used by tactical simulation to associate annotations with players and action types.
 """
-# annotation.py
 
-from PyQt5.QtCore import Qt, QPointF, QRectF
-from PyQt5.QtGui import QPen, QColor, QPainterPath, QBrush, QTransform, QCursor
-from PyQt5.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup, QGraphicsRectItem, QGraphicsEllipseItem, QStyleOptionGraphicsItem, QStyle
+from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtGui import QPen, QColor, QPainterPath, QBrush, QTransform, QCursor
+from PyQt6.QtWidgets import QGraphicsPathItem, QGraphicsItemGroup, QGraphicsRectItem, QGraphicsEllipseItem, QStyleOptionGraphicsItem, QStyle, QGraphicsItem
 
 import math
 
@@ -52,16 +51,16 @@ class ResizeHandle(QGraphicsRectItem):
 
         # Set cursor based on corner type
         cursor_map = {
-            'top_left': Qt.SizeFDiagCursor,
-            'top_right': Qt.SizeBDiagCursor,
-            'bottom_left': Qt.SizeBDiagCursor,
-            'bottom_right': Qt.SizeFDiagCursor
+            'top_left': Qt.CursorShape.SizeFDiagCursor,
+            'top_right': Qt.CursorShape.SizeBDiagCursor,
+            'bottom_left': Qt.CursorShape.SizeBDiagCursor,
+            'bottom_right': Qt.CursorShape.SizeFDiagCursor
         }
-        self.setCursor(cursor_map.get(corner_type, Qt.SizeFDiagCursor))
+        self.setCursor(cursor_map.get(corner_type, Qt.CursorShape.SizeFDiagCursor))
         
         # Enable mouse interaction but disable automatic movement
-        self.setFlag(QGraphicsRectItem.ItemIsSelectable, False)
-        self.setFlag(QGraphicsRectItem.ItemIsMovable, False)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setAcceptHoverEvents(True)
         
         # Make sure handle receives mouse events first
@@ -69,7 +68,7 @@ class ResizeHandle(QGraphicsRectItem):
         
     def mousePressEvent(self, event):
         """Handle mouse press for resize operation."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
             # Handles are in scene, so use scene coordinates directly
             scene_pos = event.scenePos()
@@ -81,7 +80,7 @@ class ResizeHandle(QGraphicsRectItem):
         
     def mouseMoveEvent(self, event):
         """Handle mouse move for resize operation."""
-        if self._dragging and event.buttons() & Qt.LeftButton:
+        if self._dragging and event.buttons() & Qt.MouseButton.LeftButton:
             # Handles are in scene, so use scene coordinates directly
             scene_pos = event.scenePos()
             self.parent_item.update_resize(self.corner_type, scene_pos)
@@ -92,7 +91,7 @@ class ResizeHandle(QGraphicsRectItem):
         
     def mouseReleaseEvent(self, event):
         """Handle mouse release to end resize operation."""
-        if event.button() == Qt.LeftButton and self._dragging:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
             self.parent_item.end_resize()
             event.accept()
@@ -253,7 +252,7 @@ class ArrowAnnotationManager:
             # Add alpha for preview (e.g., 0.5 transparency)
             col = QColor(color)
             col.setAlphaF(0.5)
-            color = col.name(QColor.HexArgb)  # force alpha
+            color = col.name()  # PyQt6: no HexArgb enum; name() includes alpha if set
         arrow = CustomArrowItem(
             arrow_points=pts,
             color=color,
@@ -308,9 +307,10 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._original_points = None
 
         # Configuration flags
-        self.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
-        self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         
         self._draw_items()
         self._create_selection_rect()
@@ -318,7 +318,7 @@ class CustomArrowItem(QGraphicsItemGroup):
     def paint(self, painter, option, widget):
         """Override to remove default white square"""
         option_modified = QStyleOptionGraphicsItem(option)
-        option_modified.state &= ~QStyle.State_Selected
+        option_modified.state &= ~QStyle.StateFlag.State_Selected
         super().paint(painter, option_modified, widget)
 
     def _create_selection_rect(self):
@@ -337,7 +337,7 @@ class CustomArrowItem(QGraphicsItemGroup):
         
         # Thin outline, using arrow color for the selection rectangle
         self._selection_rect.setPen(QPen(QColor(self.arrow_color), 0.1))  
-        self._selection_rect.setBrush(QBrush(Qt.NoBrush))  # No fill
+        self._selection_rect.setBrush(QBrush(Qt.BrushStyle.NoBrush))  # No fill
         self._selection_rect.setZValue(1000)
         self._selection_rect.setVisible(False)
         
@@ -405,7 +405,8 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._original_points = [QPointF(p.x() - group_pos.x(), p.y() - group_pos.y()) for p in self.arrow_points]
         
         # Disable normal movement during resize
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
     
     def update_resize(self, corner_type, scene_pos):
         """Update arrow points during an active resize operation."""
@@ -481,7 +482,8 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._original_points = None
         
         # Re-enable normal movement
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
     
     def _update_selection_rect_bounds(self):
         """Update selection rectangle bounds based on current arrow points."""
@@ -514,7 +516,8 @@ class CustomArrowItem(QGraphicsItemGroup):
 
     def itemChange(self, change, value):
         """Handle move operations only - resize is handled by handles."""
-        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+        from PyQt6.QtWidgets import QGraphicsItem
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.isSelected():
             # Don't move if we're in resize mode (handles are controlling the resize)
             if self._is_resizing:
                 return self.pos()
@@ -610,19 +613,19 @@ class CustomArrowItem(QGraphicsItemGroup):
         self._body_item = QGraphicsPathItem(body_path)
         pen = QPen(QColor(self.arrow_color), self.arrow_width * 0.1)
         if self.arrow_style == "dotted":
-            pen.setStyle(Qt.DashLine)
+            pen.setStyle(Qt.PenStyle.DashLine)
         else:
-            pen.setStyle(Qt.SolidLine)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+            pen.setStyle(Qt.PenStyle.SolidLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         self._body_item.setPen(pen)
-        self._body_item.setBrush(QBrush(Qt.NoBrush))
+        self._body_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.addToGroup(self._body_item)
 
         # Create head item
         head_path = self._draw_arrow_head_triangle(start, end, head_length)
         self._head_item = QGraphicsPathItem(head_path)
-        self._head_item.setPen(QPen(Qt.NoPen))
+        self._head_item.setPen(QPen(Qt.PenStyle.NoPen))
         self._head_item.setBrush(QBrush(QColor(self.arrow_color)))
         self.addToGroup(self._head_item)
 
@@ -696,13 +699,85 @@ class CustomArrowItem(QGraphicsItemGroup):
         return path
 
     def _create_zigzag_path(self, pts):
-        """Create a simplified zigzag path through points."""
+        """Crée un chemin zigzag sinusoïdal segment par segment avec période uniforme,
+        et une fin droite sur ~15% du dernier segment pour la tête.
+        """
         if len(pts) < 2:
             return QPainterPath()
+
+        # Période fixe en pixels et amplitude en fonction de l'épaisseur
+        period_pixels = 2.0
+        base_w = getattr(self, "arrow_width", 2.0) or 2.0
+        amplitude = 0.6  # amplitude latérale (pixels)
+
+        # Raccourcissement pour la tête (utilisé uniquement pour le dernier segment)
+        last_start = pts[-2]
+        last_end = pts[-1]
+        ldx = last_end.x() - last_start.x()
+        ldy = last_end.y() - last_start.y()
+        llen = math.hypot(ldx, ldy)
+        head_length = ANNOTATION_ARROW_HEAD_LENGTH * max(0.8, base_w * 0.25)
+        if llen > 0:
+            ratio = max(0.0, (llen - head_length * 0.7) / llen)
+            shortened_end = QPointF(last_start.x() + ldx * ratio, last_start.y() + ldy * ratio)
+        else:
+            shortened_end = last_end
+
         path = QPainterPath()
         path.moveTo(pts[0])
-        for p in pts[1:]:
-            path.lineTo(p)
+
+        for seg_idx in range(len(pts) - 1):
+            start_pt = pts[seg_idx]
+            end_pt = shortened_end if seg_idx == len(pts) - 2 else pts[seg_idx + 1]
+
+            dx = end_pt.x() - start_pt.x()
+            dy = end_pt.y() - start_pt.y()
+            seg_len = math.hypot(dx, dy)
+            if seg_len <= 1e-6:
+                continue
+
+            ux, uy = dx / seg_len, dy / seg_len
+            px, py = -uy, ux
+
+            # Nombre d'échantillons (au moins 30)
+            num_samples = max(int(seg_len / period_pixels * 10), 30)
+            control_points = []
+            is_last_segment = (seg_idx == len(pts) - 2)
+
+            for i in range(1, num_samples + 1):
+                t = i / num_samples
+                bx = start_pt.x() + t * dx
+                by = start_pt.y() + t * dy
+
+                if is_last_segment and t > 0.85:
+                    fx, fy = bx, by
+                else:
+                    distance_pixels = t * seg_len
+                    osc = amplitude * math.sin(distance_pixels / period_pixels * 2.0 * math.pi)
+                    fx = bx + osc * px
+                    fy = by + osc * py
+                control_points.append(QPointF(fx, fy))
+
+            if control_points:
+                # Lissage par courbes quadratiques
+                smooth_until = int(len(control_points) * (0.85 if is_last_segment else 1.0))
+                if smooth_until > 1:
+                    path.quadTo(
+                        control_points[0],
+                        QPointF(
+                            (control_points[0].x() + control_points[1].x()) / 2.0,
+                            (control_points[0].y() + control_points[1].y()) / 2.0,
+                        ),
+                    )
+                    for i in range(1, min(smooth_until, len(control_points) - 1)):
+                        mid = QPointF(
+                            (control_points[i].x() + control_points[i + 1].x()) / 2.0,
+                            (control_points[i].y() + control_points[i + 1].y()) / 2.0,
+                        )
+                        path.quadTo(control_points[i], mid)
+                for i in range(smooth_until, len(control_points)):
+                    path.lineTo(control_points[i])
+
         return path
 
     # Interface methods
@@ -1051,16 +1126,17 @@ class RectangleZoneItem(QGraphicsItemGroup):
         self._create_selection_rect()
         
         # Set flags for interaction
-        self.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
-        self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         
 
         
     def paint(self, painter, option, widget):
         """Override to remove default white selection rectangle."""
         option_modified = QStyleOptionGraphicsItem(option)
-        option_modified.state &= ~QStyle.State_Selected
+        option_modified.state &= ~QStyle.StateFlag.State_Selected
         super().paint(painter, option_modified, widget)
         
     def _create_zone_item(self):
@@ -1071,9 +1147,9 @@ class RectangleZoneItem(QGraphicsItemGroup):
         # Set pen with ultra-thin thickness
         pen = QPen(QColor(self.zone_color), 0.1)  # Cosmetic pen (thinnest possible)
         if self.zone_style in ("dashed", "dotted"):
-            pen.setStyle(Qt.DashLine)
+            pen.setStyle(Qt.PenStyle.DashLine)
         else:
-            pen.setStyle(Qt.SolidLine)
+            pen.setStyle(Qt.PenStyle.SolidLine)
         self.zone_item.setPen(pen)
         
         # Set brush with transparency
@@ -1093,7 +1169,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         """Create selection rectangle."""
         self._selection_rect = QGraphicsRectItem()
         self._selection_rect.setPen(QPen(QColor(self.zone_color), 0.1))  # Ultra-thin selection
-        self._selection_rect.setBrush(QBrush(Qt.NoBrush))
+        self._selection_rect.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self._selection_rect.setVisible(False)
 
         self.addToGroup(self._selection_rect)
@@ -1121,25 +1197,20 @@ class RectangleZoneItem(QGraphicsItemGroup):
             
     def _update_selection_rect(self):
         """Update selection rectangle to match zone bounds."""
-        # Convert zone_item rect to group local coordinates
+        # Start from the zone local rect (in group coordinates)
         zone_rect = self.zone_item.rect()
-        zone_pos = self.zone_item.pos()  # Position relative to group
-        
-        # Create bounds in group coordinates
-        bounds = QRectF(
-            zone_pos.x() + zone_rect.x(),
-            zone_pos.y() + zone_rect.y(),
-            zone_rect.width(),
-            zone_rect.height()
-        )
-            
-        # Apply rotation if needed
+        bounds = QRectF(zone_rect)
+
+        # Apply the SAME transform as the shape (rotate around its center)
         if self.rotation_angle != 0:
+            center = zone_rect.center()
             transform = QTransform()
+            transform.translate(center.x(), center.y())
             transform.rotate(self.rotation_angle)
-            bounds = transform.mapRect(bounds)
-            
-        # No padding - exact bounds only
+            transform.translate(-center.x(), -center.y())
+            bounds = transform.mapRect(zone_rect)
+
+        # Exact bounds; keep color in sync
         self._selection_rect.setRect(bounds)
         # Keep selection rectangle pen color in sync
         self._selection_rect.setPen(QPen(QColor(self.zone_color), 0.1))  # Ultra-thin selection
@@ -1168,7 +1239,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         scaled_width = width * 0.25 
         # Create new pen with color and float width
         new_pen = QPen(QColor(self.zone_color), scaled_width)
-        new_pen.setStyle(Qt.DashLine if self.zone_style == "dashed" else Qt.SolidLine)
+        new_pen.setStyle(Qt.PenStyle.DashLine if self.zone_style == "dashed" else Qt.PenStyle.SolidLine)
         self.zone_item.setPen(new_pen)
         
     def set_fill_alpha(self, alpha):
@@ -1182,7 +1253,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         """Change zone border style ('solid'|'dashed')."""
         self.zone_style = "dashed" if str(style).lower() in ("dash", "dashed", "--") else "solid"
         pen = self.zone_item.pen()
-        pen.setStyle(Qt.DashLine if self.zone_style == "dashed" else Qt.SolidLine)
+        pen.setStyle(Qt.PenStyle.DashLine if self.zone_style == "dashed" else Qt.PenStyle.SolidLine)
         self.zone_item.setPen(pen)
         
     def set_rotation(self, angle):
@@ -1202,6 +1273,7 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
         if self.isSelected():
             self._update_selection_rect()
+            self._update_handles_position()
             
     def get_rotation(self):
         """Get current rotation angle."""
@@ -1250,62 +1322,82 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
         
         # Disable normal movement during resize
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
     
     def update_resize(self, corner_type, scene_pos):
-        """Update zone rectangle during resize operation."""
+        """Update zone rectangle during resize operation (rotation-aware)."""
         if not self._is_resizing or not self._original_rect:
             return
-            
-        # Calculate resize delta
-        delta = scene_pos - self._resize_start_pos
-        
-        # Use _original_rect directly (it's already the correct reference position after moves)
+
+        # Convert dragged scene position to group-local coordinates
+        group_pos = self.pos()
+        new_corner_local = QPointF(scene_pos.x() - group_pos.x(), scene_pos.y() - group_pos.y())
+
+        # Original rotated bounds (axis-aligned) of the rectangle
         orig_rect = QRectF(self._original_rect)
-        
-        
-        # Get original bounds (like arrows do)
-        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
-        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
-        
-        # Calculate new bounds based on corner being dragged (like arrows)
-        new_min_x, new_max_x = orig_min_x, orig_max_x
-        new_min_y, new_max_y = orig_min_y, orig_max_y
-        
-        if corner_type in ['top_left', 'bottom_left']:
-            new_min_x = orig_min_x + delta.x()
-        if corner_type in ['top_right', 'bottom_right']:
-            new_max_x = orig_max_x + delta.x()
-        if corner_type in ['top_left', 'top_right']:
-            new_min_y = orig_min_y + delta.y()
-        if corner_type in ['bottom_left', 'bottom_right']:
-            new_max_y = orig_max_y + delta.y()
-            
-        new_left, new_right = new_min_x, new_max_x
-        new_top, new_bottom = new_min_y, new_max_y
-        
-        # Prevent negative dimensions (allow very small forms)
-        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+        angle = math.radians(self.rotation_angle)
+        c = abs(math.cos(angle))
+        s = abs(math.sin(angle))
+        center_orig = orig_rect.center()
+
+        # Build original axis-aligned bounding box after rotation
+        bw_orig = orig_rect.width() * c + orig_rect.height() * s
+        bh_orig = orig_rect.width() * s + orig_rect.height() * c
+        bounds_orig = QRectF(center_orig.x() - bw_orig / 2.0,
+                             center_orig.y() - bh_orig / 2.0,
+                             bw_orig, bh_orig)
+
+        # Opposite corner fixed; dragged corner replaced by new position
+        corners = {
+            'top_left': QPointF(bounds_orig.left(), bounds_orig.top()),
+            'top_right': QPointF(bounds_orig.right(), bounds_orig.top()),
+            'bottom_left': QPointF(bounds_orig.left(), bounds_orig.bottom()),
+            'bottom_right': QPointF(bounds_orig.right(), bounds_orig.bottom()),
+        }
+        opposite = {
+            'top_left': 'bottom_right',
+            'bottom_right': 'top_left',
+            'top_right': 'bottom_left',
+            'bottom_left': 'top_right',
+        }
+        if corner_type not in corners:
             return
-            
-        # Calculate new dimensions
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        # Use coordinates directly (no conversion needed)
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        old_rect = QRectF(self.rect)
-        self.rect = QRectF(new_left, new_top, new_width, new_height)
-        
-        
-        
-        # Update zone_item with new rect
-        
+
+        fixed = corners[opposite[corner_type]]
+        new_bounds = QRectF(new_corner_local, fixed).normalized()
+
+        # Compute new width/height of the underlying unrotated rect so that
+        # its rotated bounding box equals new_bounds
+        bw = new_bounds.width()
+        bh = new_bounds.height()
+        det = c * c - s * s  # = cos(2a)
+
+        if abs(det) < 1e-6:
+            # Fallback: scale with ratios preserving previous aspect
+            scale_w = bw / max(bw_orig, 1e-6)
+            scale_h = bh / max(bh_orig, 1e-6)
+            new_w = max(1.0, orig_rect.width() * scale_w)
+            new_h = max(1.0, orig_rect.height() * scale_h)
+        else:
+            new_w = max(1.0, (bw * c - bh * s) / det)
+            new_h = max(1.0, (bh * c - bw * s) / det)
+
+        # New center is the center of the new bounds
+        center_new = new_bounds.center()
+        self.rect = QRectF(center_new.x() - new_w / 2.0,
+                           center_new.y() - new_h / 2.0,
+                           new_w, new_h)
+
+        # Apply transform rotation around the new center
+        transform = QTransform()
+        transform.translate(center_new.x(), center_new.y())
+        transform.rotate(self.rotation_angle)
+        transform.translate(-center_new.x(), -center_new.y())
         self.zone_item.setRect(self.rect)
-        
-        # Update selection rectangle and handles
+        self.zone_item.setTransform(transform)
+
+        # Update selection rectangle and handles to match new bounds
         self._update_selection_rect()
         self._update_handles_position()
     
@@ -1321,7 +1413,8 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
         
         # Re-enable normal movement
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
     
     def end_movement(self):
         """Called when movement ends to update _original_rect."""
@@ -1391,62 +1484,72 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
         
         # Disable normal movement during resize
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
     
     def update_resize(self, corner_type, scene_pos):
-        """Update zone rectangle during resize operation."""
+        """Update ellipse rectangle during resize operation (rotation-aware)."""
         if not self._is_resizing or not self._original_rect:
             return
-            
-        # Calculate resize delta
-        delta = scene_pos - self._resize_start_pos
-        
-        # Use _original_rect directly (it's already the correct reference position after moves)
+
+        group_pos = self.pos()
+        new_corner_local = QPointF(scene_pos.x() - group_pos.x(), scene_pos.y() - group_pos.y())
+
         orig_rect = QRectF(self._original_rect)
-        
-        
-        # Get original bounds (like arrows do)
-        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
-        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
-        
-        # Calculate new bounds based on corner being dragged (like arrows)
-        new_min_x, new_max_x = orig_min_x, orig_max_x
-        new_min_y, new_max_y = orig_min_y, orig_max_y
-        
-        if corner_type in ['top_left', 'bottom_left']:
-            new_min_x = orig_min_x + delta.x()
-        if corner_type in ['top_right', 'bottom_right']:
-            new_max_x = orig_max_x + delta.x()
-        if corner_type in ['top_left', 'top_right']:
-            new_min_y = orig_min_y + delta.y()
-        if corner_type in ['bottom_left', 'bottom_right']:
-            new_max_y = orig_max_y + delta.y()
-            
-        new_left, new_right = new_min_x, new_max_x
-        new_top, new_bottom = new_min_y, new_max_y
-        
-        # Prevent negative dimensions (allow very small forms)
-        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+        angle = math.radians(self.rotation_angle)
+        c = abs(math.cos(angle))
+        s = abs(math.sin(angle))
+        center_orig = orig_rect.center()
+
+        bw_orig = orig_rect.width() * c + orig_rect.height() * s
+        bh_orig = orig_rect.width() * s + orig_rect.height() * c
+        bounds_orig = QRectF(center_orig.x() - bw_orig / 2.0,
+                             center_orig.y() - bh_orig / 2.0,
+                             bw_orig, bh_orig)
+
+        corners = {
+            'top_left': QPointF(bounds_orig.left(), bounds_orig.top()),
+            'top_right': QPointF(bounds_orig.right(), bounds_orig.top()),
+            'bottom_left': QPointF(bounds_orig.left(), bounds_orig.bottom()),
+            'bottom_right': QPointF(bounds_orig.right(), bounds_orig.bottom()),
+        }
+        opposite = {
+            'top_left': 'bottom_right',
+            'bottom_right': 'top_left',
+            'top_right': 'bottom_left',
+            'bottom_left': 'top_right',
+        }
+        if corner_type not in corners:
             return
-            
-        # Calculate new dimensions
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        # Use coordinates directly (no conversion needed)
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        old_rect = QRectF(self.rect)
-        self.rect = QRectF(new_left, new_top, new_width, new_height)
-        
-        
-        
-        # Update zone_item with new rect
-        
+
+        fixed = corners[opposite[corner_type]]
+        new_bounds = QRectF(new_corner_local, fixed).normalized()
+
+        bw = new_bounds.width()
+        bh = new_bounds.height()
+        det = c * c - s * s
+
+        if abs(det) < 1e-6:
+            scale_w = bw / max(bw_orig, 1e-6)
+            scale_h = bh / max(bh_orig, 1e-6)
+            new_w = max(1.0, orig_rect.width() * scale_w)
+            new_h = max(1.0, orig_rect.height() * scale_h)
+        else:
+            new_w = max(1.0, (bw * c - bh * s) / det)
+            new_h = max(1.0, (bh * c - bw * s) / det)
+
+        center_new = new_bounds.center()
+        self.rect = QRectF(center_new.x() - new_w / 2.0,
+                           center_new.y() - new_h / 2.0,
+                           new_w, new_h)
+
+        transform = QTransform()
+        transform.translate(center_new.x(), center_new.y())
+        transform.rotate(self.rotation_angle)
+        transform.translate(-center_new.x(), -center_new.y())
         self.zone_item.setRect(self.rect)
-        
-        # Update selection rectangle and handles
+        self.zone_item.setTransform(transform)
+
         self._update_selection_rect()
         self._update_handles_position()
     
@@ -1462,7 +1565,8 @@ class RectangleZoneItem(QGraphicsItemGroup):
         
         
         # Re-enable normal movement
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
     
     def end_movement(self):
         """Called when movement ends to update _original_rect."""
@@ -1493,7 +1597,8 @@ class RectangleZoneItem(QGraphicsItemGroup):
     
     def itemChange(self, change, value):
         """Handle move operations only - resize is handled by handles."""
-        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+        from PyQt6.QtWidgets import QGraphicsItem
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.isSelected():
             # Don't move if we're in resize mode (handles are controlling the resize)
             if self._is_resizing:
                 return self.pos()
@@ -1507,7 +1612,8 @@ class RectangleZoneItem(QGraphicsItemGroup):
                 self._update_handles_position()
             
         # After the position has actually changed, sync _original_rect to the new rect
-        if change == QGraphicsItemGroup.ItemPositionHasChanged and hasattr(self, 'rect'):
+        from PyQt6.QtWidgets import QGraphicsItem
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and hasattr(self, 'rect'):
             if hasattr(self, '_original_rect'):
                 self._original_rect = QRectF(self.rect)
                 
@@ -1545,16 +1651,17 @@ class EllipseZoneItem(QGraphicsItemGroup):
         self._create_selection_rect()
         
         # Set flags for interaction
-        self.setFlag(QGraphicsItemGroup.ItemIsSelectable, True)
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
-        self.setFlag(QGraphicsItemGroup.ItemSendsGeometryChanges, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         
 
         
     def paint(self, painter, option, widget):
         """Override to remove default white selection rectangle."""
         option_modified = QStyleOptionGraphicsItem(option)
-        option_modified.state &= ~QStyle.State_Selected
+        option_modified.state &= ~QStyle.StateFlag.State_Selected
         super().paint(painter, option_modified, widget)
         
     def _create_zone_item(self):
@@ -1565,9 +1672,9 @@ class EllipseZoneItem(QGraphicsItemGroup):
         # Set pen with ultra-thin thickness
         pen = QPen(QColor(self.zone_color), 0.1)  # Cosmetic pen (thinnest possible)
         if self.zone_style in ("dashed", "dotted"):
-            pen.setStyle(Qt.DashLine)
+            pen.setStyle(Qt.PenStyle.DashLine)
         else:
-            pen.setStyle(Qt.SolidLine)
+            pen.setStyle(Qt.PenStyle.SolidLine)
         self.zone_item.setPen(pen)
         
         # Set brush with transparency
@@ -1587,7 +1694,7 @@ class EllipseZoneItem(QGraphicsItemGroup):
         """Create selection rectangle."""
         self._selection_rect = QGraphicsRectItem()
         self._selection_rect.setPen(QPen(QColor(self.zone_color), 0.1))  # Ultra-thin selection
-        self._selection_rect.setBrush(QBrush(Qt.NoBrush))
+        self._selection_rect.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         self._selection_rect.setVisible(False)
 
         self.addToGroup(self._selection_rect)
@@ -1614,17 +1721,26 @@ class EllipseZoneItem(QGraphicsItemGroup):
                 handle.setVisible(False)
             
     def _update_selection_rect(self):
-        """Update selection rectangle and resize handles to match zone bounds."""
-        # Use the zone_item's local rectangle (already in group coordinates)
-        bounds = self.zone_item.rect()
-            
-        # Apply rotation if needed
-        if self.rotation_angle != 0:
-            transform = QTransform()
-            transform.rotate(self.rotation_angle)
-            bounds = transform.mapRect(bounds)
-            
-        # No padding - exact bounds only
+        """Update selection rectangle and resize handles to match zone bounds.
+
+        For an ellipse, use the minimal axis-aligned bounding box of the rotated
+        ellipse rather than transforming the rect as if it were a box.
+        """
+        rect = self.zone_item.rect()
+        center = rect.center()
+        a = rect.width() / 2.0
+        b = rect.height() / 2.0
+        theta = math.radians(self.rotation_angle)
+        c = math.cos(theta)
+        s = math.sin(theta)
+
+        half_w = math.sqrt((a * c) ** 2 + (b * s) ** 2)
+        half_h = math.sqrt((a * s) ** 2 + (b * c) ** 2)
+        bounds = QRectF(center.x() - half_w,
+                        center.y() - half_h,
+                        2.0 * half_w,
+                        2.0 * half_h)
+
         self._selection_rect.setRect(bounds)
         self._selection_rect.setPen(QPen(QColor(self.zone_color), 0.1))  # Ultra-thin selection
         
@@ -1632,7 +1748,8 @@ class EllipseZoneItem(QGraphicsItemGroup):
     
     def itemChange(self, change, value):
         """Handle move operations only - resize is handled by handles."""
-        if change == QGraphicsItemGroup.ItemPositionChange and self.isSelected():
+        from PyQt6.QtWidgets import QGraphicsItem
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.isSelected():
             # Don't move if we're in resize mode (handles are controlling the resize)
             if self._is_resizing:
                 return self.pos()
@@ -1646,7 +1763,8 @@ class EllipseZoneItem(QGraphicsItemGroup):
                 self._update_handles_position()
             
         # After the position has actually changed, sync _original_rect to the new rect
-        if change == QGraphicsItemGroup.ItemPositionHasChanged and hasattr(self, 'rect'):
+        from PyQt6.QtWidgets import QGraphicsItem
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged and hasattr(self, 'rect'):
             if hasattr(self, '_original_rect'):
                 self._original_rect = QRectF(self.rect)
         
@@ -1704,7 +1822,7 @@ class EllipseZoneItem(QGraphicsItemGroup):
         scaled_width = width * 0.25
         # Create new pen with color and float width
         new_pen = QPen(QColor(self.zone_color), scaled_width)
-        new_pen.setStyle(Qt.DashLine if self.zone_style == "dashed" else Qt.SolidLine)
+        new_pen.setStyle(Qt.PenStyle.DashLine if self.zone_style == "dashed" else Qt.PenStyle.SolidLine)
         self.zone_item.setPen(new_pen)
         
     def set_fill_alpha(self, alpha):
@@ -1718,7 +1836,7 @@ class EllipseZoneItem(QGraphicsItemGroup):
         """Change zone border style ('solid'|'dashed')."""
         self.zone_style = "dashed" if str(style).lower() in ("dash", "dashed", "--") else "solid"
         pen = self.zone_item.pen()
-        pen.setStyle(Qt.DashLine if self.zone_style == "dashed" else Qt.SolidLine)
+        pen.setStyle(Qt.PenStyle.DashLine if self.zone_style == "dashed" else Qt.PenStyle.SolidLine)
         self.zone_item.setPen(pen)
         
     def set_rotation(self, angle):
@@ -1738,6 +1856,7 @@ class EllipseZoneItem(QGraphicsItemGroup):
         
         if self.isSelected():
             self._update_selection_rect()
+            self._update_handles_position()
             
     def get_rotation(self):
         """Get current rotation angle."""
@@ -1784,62 +1903,83 @@ class EllipseZoneItem(QGraphicsItemGroup):
         
         
         # Disable normal movement during resize
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, False)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
     
     def update_resize(self, corner_type, scene_pos):
-        """Update zone rectangle during resize operation."""
+        """Update ellipse rectangle during resize operation (rotation-aware)."""
         if not self._is_resizing or not self._original_rect:
             return
-            
-        # Calculate resize delta
-        delta = scene_pos - self._resize_start_pos
-        
-        # Use _original_rect directly (it's already the correct reference position after moves)
+
+        # Work in group-local coordinates
+        group_pos = self.pos()
+        new_corner_local = QPointF(scene_pos.x() - group_pos.x(), scene_pos.y() - group_pos.y())
+
+        # Original ellipse rect (unrotated) and its rotated AABB
         orig_rect = QRectF(self._original_rect)
-        
-        
-        # Get original bounds (like arrows do)
-        orig_min_x, orig_max_x = orig_rect.left(), orig_rect.right()
-        orig_min_y, orig_max_y = orig_rect.top(), orig_rect.bottom()
-        
-        # Calculate new bounds based on corner being dragged (like arrows)
-        new_min_x, new_max_x = orig_min_x, orig_max_x
-        new_min_y, new_max_y = orig_min_y, orig_max_y
-        
-        if corner_type in ['top_left', 'bottom_left']:
-            new_min_x = orig_min_x + delta.x()
-        if corner_type in ['top_right', 'bottom_right']:
-            new_max_x = orig_max_x + delta.x()
-        if corner_type in ['top_left', 'top_right']:
-            new_min_y = orig_min_y + delta.y()
-        if corner_type in ['bottom_left', 'bottom_right']:
-            new_max_y = orig_max_y + delta.y()
-            
-        new_left, new_right = new_min_x, new_max_x
-        new_top, new_bottom = new_min_y, new_max_y
-        
-        # Prevent negative dimensions (allow very small forms)
-        if new_right - new_left <= 1 or new_bottom - new_top <= 1:
+        angle = math.radians(self.rotation_angle)
+        c = math.cos(angle)
+        s = math.sin(angle)
+        c2 = c * c
+        s2 = s * s
+        center_orig = orig_rect.center()
+        a0 = max(1e-6, orig_rect.width() / 2.0)
+        b0 = max(1e-6, orig_rect.height() / 2.0)
+        half_w0 = math.sqrt((a0 * c) ** 2 + (b0 * s) ** 2)
+        half_h0 = math.sqrt((a0 * s) ** 2 + (b0 * c) ** 2)
+        bounds_orig = QRectF(center_orig.x() - half_w0,
+                             center_orig.y() - half_h0,
+                             2.0 * half_w0,
+                             2.0 * half_h0)
+
+        corners = {
+            'top_left': QPointF(bounds_orig.left(), bounds_orig.top()),
+            'top_right': QPointF(bounds_orig.right(), bounds_orig.top()),
+            'bottom_left': QPointF(bounds_orig.left(), bounds_orig.bottom()),
+            'bottom_right': QPointF(bounds_orig.right(), bounds_orig.bottom()),
+        }
+        opposite = {
+            'top_left': 'bottom_right',
+            'bottom_right': 'top_left',
+            'top_right': 'bottom_left',
+            'bottom_left': 'top_right',
+        }
+        if corner_type not in corners:
             return
-            
-        # Calculate new dimensions
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        # Use coordinates directly (no conversion needed)
-        new_width = new_right - new_left
-        new_height = new_bottom - new_top
-        
-        old_rect = QRectF(self.rect)
-        self.rect = QRectF(new_left, new_top, new_width, new_height)
-        
-        
-        
-        # Update zone_item with new rect
-        
+
+        fixed = corners[opposite[corner_type]]
+        new_bounds = QRectF(new_corner_local, fixed).normalized()
+
+        # New AABB half sizes
+        A = max(1.0, new_bounds.width() / 2.0)
+        B = max(1.0, new_bounds.height() / 2.0)
+        D = c2 - s2  # cos(2θ)
+
+        if abs(D) < 1e-6:
+            # fallback scaling at singular angles
+            scale_w = (A * 2.0) / max(bounds_orig.width(), 1e-6)
+            scale_h = (B * 2.0) / max(bounds_orig.height(), 1e-6)
+            a = max(1.0, a0 * scale_w)
+            b = max(1.0, b0 * scale_h)
+        else:
+            a2 = max(1e-6, (A * A * c2 - B * B * s2) / D)
+            b2 = max(1e-6, (B * B * c2 - A * A * s2) / D)
+            a = math.sqrt(a2)
+            b = math.sqrt(b2)
+
+        # Rebuild the unrotated rect from center and (a,b)
+        center_new = new_bounds.center()
+        self.rect = QRectF(center_new.x() - a, center_new.y() - b, 2.0 * a, 2.0 * b)
+
+        # Apply rotation around the center
+        transform = QTransform()
+        transform.translate(center_new.x(), center_new.y())
+        transform.rotate(self.rotation_angle)
+        transform.translate(-center_new.x(), -center_new.y())
         self.zone_item.setRect(self.rect)
-        
-        # Update selection rectangle and handles
+        self.zone_item.setTransform(transform)
+
+        # Sync selection rectangle and handles
         self._update_selection_rect()
         self._update_handles_position()
     
@@ -1855,7 +1995,8 @@ class EllipseZoneItem(QGraphicsItemGroup):
         
         
         # Re-enable normal movement
-        self.setFlag(QGraphicsItemGroup.ItemIsMovable, True)
+        from PyQt6.QtWidgets import QGraphicsItem
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
     
     def end_movement(self):
         """Called when movement ends to update _original_rect."""

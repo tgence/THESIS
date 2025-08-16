@@ -6,12 +6,13 @@ Lets users switch camera presets and control zoom; emits signals to the
 """
 # camera_controls.py
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLabel, QGroupBox, QFrame, QGridLayout
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QFont, QIcon, QPainter, QPen, QPixmap, QColor
+from PyQt6 import QtCore
 
 class CameraControlWidget(QWidget):
     """Compact camera control widget with mode buttons and zoom controls.
@@ -55,16 +56,18 @@ class CameraControlWidget(QWidget):
         zoom_layout = QHBoxLayout()
         zoom_layout.setSpacing(3)
         
-        self.zoom_out_btn = QPushButton("-")
-        self.zoom_out_btn.setMaximumWidth(25)
-        self.zoom_out_btn.setMaximumHeight(25)
+        self.zoom_out_btn = QPushButton()
+        self.zoom_out_btn.setFixedSize(26, 26)
         self.zoom_out_btn.setToolTip("Zoom Out")
+        self.zoom_out_btn.setIcon(self._make_zoom_icon("-", size=16))
+        self.zoom_out_btn.setIconSize(QtCore.QSize(16, 16))
         zoom_layout.addWidget(self.zoom_out_btn)
         
-        self.zoom_in_btn = QPushButton("+")
-        self.zoom_in_btn.setMaximumWidth(25)
-        self.zoom_in_btn.setMaximumHeight(25)
+        self.zoom_in_btn = QPushButton()
+        self.zoom_in_btn.setFixedSize(26, 26)
         self.zoom_in_btn.setToolTip("Zoom In")
+        self.zoom_in_btn.setIcon(self._make_zoom_icon("+", size=16))
+        self.zoom_in_btn.setIconSize(QtCore.QSize(16, 16))
         zoom_layout.addWidget(self.zoom_in_btn)
         
         self.reset_zoom_btn = QPushButton("Reset")
@@ -146,6 +149,24 @@ class CameraControlWidget(QWidget):
         self.zoom_in_btn.clicked.connect(self.zoomInRequested.emit)
         self.zoom_out_btn.clicked.connect(self.zoomOutRequested.emit)
         self.reset_zoom_btn.clicked.connect(self.resetZoomRequested.emit)
+
+    def _make_zoom_icon(self, kind: str, size: int = 16) -> QIcon:
+        """Create a simple plus/minus icon with the app accent blue, sized to fit the button."""
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Accent blue (#2196F3)
+        pen = QPen(QColor(33, 150, 243), 2)
+        painter.setPen(pen)
+        # horizontal (with small margins)
+        margin = 3
+        painter.drawLine(margin, size//2, size-margin, size//2)
+        if kind == "+":
+            # vertical
+            painter.drawLine(size//2, margin, size//2, size-margin)
+        painter.end()
+        return QIcon(pm)
     
     def set_mode(self, mode_key):
         """Change camera mode and update button visuals.

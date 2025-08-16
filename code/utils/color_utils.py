@@ -11,7 +11,6 @@ Includes helpers to:
 These utilities are used by `theme_manager.py` to ensure distinct and
 accessible colors for pitch, lines, offside, and arrows.
 """
-# color_utils.py
 import re
 from typing import Tuple
 from colormath import color_diff_matrix

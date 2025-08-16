@@ -5,12 +5,11 @@ Camera manager for the pitch view.
 Handles zoom, panning, camera presets (full, ball-follow, corners, penalties),
 and smooth updates while following the ball.
 """
-# camera_manager.py
 
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRectF, QPointF
-from PyQt5.QtWidgets import QGraphicsView
-from PyQt5.QtGui import QTransform
+from PyQt6.QtCore import QTimer, QRectF, QPointF, Qt
+from PyQt6.QtWidgets import QGraphicsView
+from PyQt6.QtGui import QTransform
 from config import *
 
 class CameraManager:
@@ -238,9 +237,6 @@ class CameraManager:
         scale_x = view_rect.width() / target_rect.width()
         scale_y = view_rect.height() / target_rect.height()
         scale_factor = min(scale_x, scale_y) * 0.9
-        
-        # Initial view state
-        initial_transform = self.view.transform()
         
         # Center on the target rect
         center = target_rect.center()

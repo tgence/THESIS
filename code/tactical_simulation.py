@@ -5,11 +5,10 @@ Tactical simulation based on user-drawn arrows.
 Associates arrows with players and action types (pass/run/dribble), then
 computes simulated player and ball positions over a chosen interval.
 """
-# tactical_simulation.py
 
 import numpy as np
 import math
-from PyQt5.QtCore import QPointF
+from PyQt6.QtCore import QPointF
 from config import *
 
 class TacticalSimulationManager:
@@ -146,7 +145,7 @@ class TacticalSimulationManager:
             for item in arrow.childItems():
                 if hasattr(item, 'pen'):
                     pen = item.pen()
-                    if pen.style() == Qt.DashLine:
+                    if pen.style() == Qt.PenStyle.DashLine:
                         return 'run'
                     break
         

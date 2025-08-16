@@ -6,15 +6,14 @@ Pitch rendering with PyQt GraphicsScene.
 (players, ball, overlays) every frame. It relies on size constants exposed via
 `CONFIG` so that visual scale can be adjusted globally.
 """
-# pitch.py
 import numpy as np
 import math
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QGraphicsScene, QGraphicsView, QVBoxLayout, QGraphicsEllipseItem, QGraphicsPathItem,
     QGraphicsTextItem, QGraphicsRectItem, QGraphicsItemGroup
 )
-from PyQt5.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
-from PyQt5.QtCore import Qt, QRectF
+from PyQt6.QtGui import QPen, QBrush, QColor, QFont, QPainterPath, QTransform
+from PyQt6.QtCore import QRectF, Qt
 from config import CONFIG
 
 
@@ -94,7 +93,7 @@ class PitchWidget(QWidget):
             self.PITCH_WIDTH  + 2*SCENE_EXTRA_GRASS
         )
         grass.setBrush(brush)
-        grass.setPen(QPen(Qt.NoPen))
+        grass.setPen(QPen(Qt.PenStyle.NoPen))
         self.scene.addItem(grass)
         self.pitch_items.append(grass)
 
@@ -131,7 +130,7 @@ class PitchWidget(QWidget):
             center_x - POINT_RADIUS,
             center_y - POINT_RADIUS,
             POINT_RADIUS*2, POINT_RADIUS*2,
-            QPen(Qt.NoPen), QBrush(QColor(line_color))
+            QPen(Qt.PenStyle.NoPen), QBrush(QColor(line_color))
         )
         self.pitch_items.append(dot)
 
@@ -140,13 +139,13 @@ class PitchWidget(QWidget):
             self.X_MIN + PENALTY_SPOT_DIST - POINT_RADIUS,
             center_y - POINT_RADIUS,
             POINT_RADIUS*2, POINT_RADIUS*2,
-            QPen(Qt.NoPen), QBrush(QColor(line_color))
+            QPen(Qt.PenStyle.NoPen), QBrush(QColor(line_color))
         )
         right_spot = self.scene.addEllipse(
             self.X_MAX - PENALTY_SPOT_DIST - POINT_RADIUS,
             center_y - POINT_RADIUS,
             POINT_RADIUS*2, POINT_RADIUS*2,
-            QPen(Qt.NoPen), QBrush(QColor(line_color))
+            QPen(Qt.PenStyle.NoPen), QBrush(QColor(line_color))
         )
         self.pitch_items.extend([left_spot, right_spot])
 
@@ -248,7 +247,7 @@ class PitchWidget(QWidget):
                 self.PITCH_WIDTH + 2*MARGIN
             )
             self.view.setSceneRect(rect)
-            self.view.fitInView(rect, Qt.KeepAspectRatio)
+            self.view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
 
     def draw_player(self, x, y, main_color, sec_color, num_color, number, 
                 angle=0, velocity=0, display_orientation=False, z_offset=10, 
@@ -325,7 +324,7 @@ class PitchWidget(QWidget):
         path_bottom.lineTo(cx, cy)
         path_bottom.closeSubpath()
         bottom_half = QGraphicsPathItem(path_bottom)
-        bottom_half.setPen(QPen(Qt.transparent, 0))
+        bottom_half.setPen(QPen(Qt.GlobalColor.transparent, 0))
         bottom_half.setBrush(QBrush(QColor(sec_color)))
         bottom_half.setZValue(z_offset + 1)
         group.addToGroup(bottom_half)
@@ -337,13 +336,13 @@ class PitchWidget(QWidget):
         path_top.lineTo(cx, cy)
         path_top.closeSubpath()
         top_half = QGraphicsPathItem(path_top)
-        top_half.setPen(QPen(Qt.transparent, 0))
+        top_half.setPen(QPen(Qt.GlobalColor.transparent, 0))
         top_half.setBrush(QBrush(QColor(main_color)))
         top_half.setZValue(z_offset + 2)
         group.addToGroup(top_half)
         
         inner = QGraphicsEllipseItem(-inner_radius, -inner_radius, inner_radius*2, inner_radius*2)
-        inner.setPen(QPen(Qt.transparent, 0))
+        inner.setPen(QPen(Qt.GlobalColor.transparent, 0))
         inner.setBrush(QBrush(QColor(main_color)))
         inner.setZValue(z_offset + 3)
         group.addToGroup(inner)
@@ -425,7 +424,7 @@ class PitchWidget(QWidget):
         
         if visible and x_offside is not None:
             pen = QPen(QColor(color), CONFIG.OFFSIDE_LINE_WIDTH)
-            pen.setStyle(Qt.DotLine)
+            pen.setStyle(Qt.PenStyle.DotLine)
             line = self.scene.addLine(x_offside, self.Y_MIN, x_offside, self.Y_MAX+1, pen)
             line.setZValue(199)
             self.dynamic_items.append(line)
@@ -455,7 +454,7 @@ class PitchWidget(QWidget):
         )
         ellipse.setBrush(QBrush(QColor(color)))
         ellipse.setOpacity(opacity)
-        ellipse.setPen(QPen(Qt.NoPen))
+        ellipse.setPen(QPen(Qt.PenStyle.NoPen))
         ellipse.setZValue(110)
         self.scene.addItem(ellipse)
         self.dynamic_items.append(ellipse)

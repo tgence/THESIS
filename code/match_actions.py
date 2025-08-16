@@ -1,3 +1,4 @@
+# match_actions.py
 """
 UI components for selecting and filtering match actions.
 
@@ -7,15 +8,14 @@ Provides:
 - `MatchActionsDialog`: list of actions with click-to-jump behavior
 - `create_nav_button`: helper for standardized navigation buttons
 """
-# match_actions.py
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel, 
     QDialog, QListWidget, QListWidgetItem, QCheckBox,
     QComboBox, QScrollArea, QFrame, QMessageBox, QWidget
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtCore import Qt
 
 class ActionFilterBar:
     """Filter bar to pick action types and toggle their visibility on timeline."""
@@ -53,8 +53,8 @@ class ActionFilterBar:
         
         # Separator
         separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)
-        separator.setFrameShadow(QFrame.Sunken)
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
         self.layout.addWidget(separator)
         
         # Placeholder to insert action buttons after the separator
@@ -76,7 +76,7 @@ class ActionFilterBar:
         # Pre-select current types
         dialog.set_selected_types(self.selected_action_types)
         
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             new_selection = dialog.get_selected_types()
             
             # Save current active button states before we rebuild
@@ -306,12 +306,12 @@ class MatchActionsDialog(QDialog):
         for act in self.actions:
             display_text = f"{act['emoji']} {act['label']} - {act['display_time']} ({act['team']})"
             item = QListWidgetItem(display_text)
-            item.setData(Qt.UserRole, act['frame'])
-            item.setData(Qt.UserRole + 1, act)        
+            item.setData(Qt.ItemDataRole.UserRole, act['frame'])
+            item.setData(Qt.ItemDataRole.UserRole + 1, act)        
             self.list_widget.addItem(item)
     
     def _on_item_clicked(self, item):
-        frame = item.data(Qt.UserRole)
+        frame = item.data(Qt.ItemDataRole.UserRole)
         activate_timeline = self.auto_timeline.isChecked()
         self.goto_callback(frame, activate_timeline)
 

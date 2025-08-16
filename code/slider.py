@@ -1,3 +1,4 @@
+# slider.py
 """
 Timeline widgets: slider with hover preview and action markers.
 
@@ -7,11 +8,10 @@ Contains:
 - `TimelineWidget`: slider + markers + zoomed overlay with action context
 - `ZoomedMarkersWidget`: floating strip showing nearby actions
 """
-# slider.py
 
-from PyQt5.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
-from PyQt5.QtCore import Qt, QEvent, pyqtSignal, QRect, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QCursor, QBrush
+from PyQt6.QtWidgets import QSlider, QToolTip, QWidget, QVBoxLayout, QLabel, QFrame, QApplication, QHBoxLayout
+from PyQt6.QtCore import QEvent, pyqtSignal, QRect, QTimer, Qt
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QCursor, QBrush
 from data_processing import format_match_time
 from config import *
 import sys
@@ -21,7 +21,7 @@ class TimelineSlider(QSlider):
     """Slider that shows a hover preview line and time tooltip."""
     hoverFrameChanged = pyqtSignal(int, str)  # frame, time_str
     def __init__(self, n_frames_firstHalf, n_frames_secondHalf, parent=None):
-        super().__init__(Qt.Horizontal, parent)
+        super().__init__(Qt.Orientation.Horizontal, parent)
         self.n_frames_firstHalf = n_frames_firstHalf
         self.n_frames_secondHalf = n_frames_secondHalf
         self.setMouseTracking(True)
@@ -30,8 +30,8 @@ class TimelineSlider(QSlider):
         self.hover_frame = None
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.width() > 0:
-            ratio = event.x() / self.width()
+        if event.button() == Qt.MouseButton.LeftButton and self.width() > 0:
+            ratio = event.position().x() / self.width()
             frame = int(ratio * self.maximum())
             frame = max(0, min(frame, self.maximum()))
             self.setValue(frame)
@@ -40,13 +40,13 @@ class TimelineSlider(QSlider):
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
         if self.width() > 0:
-            ratio = event.x() / self.width()
+            ratio = event.position().x() / self.width()
             frame = int(ratio * self.maximum())
             frame = max(0, min(frame, self.maximum()))
-            if event.buttons() & Qt.LeftButton:
+            if event.buttons() & Qt.MouseButton.LeftButton:
                 self.setValue(frame)
             time_str = format_match_time(frame, self.n_frames_firstHalf, self.n_frames_secondHalf, fps=FPS)
-            self.hover_pos = event.x()
+            self.hover_pos = int(event.position().x())
             self.hover_time_str = time_str
             self.hover_frame = frame
             self.hoverFrameChanged.emit(frame, time_str)
@@ -63,7 +63,7 @@ class TimelineSlider(QSlider):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         if self.hover_pos is not None and self.hover_frame is not None:
             current_value = self.value()
@@ -80,7 +80,7 @@ class TimelineSlider(QSlider):
                 
                 preview_brush = QBrush(QColor(33, 150, 243, 60))
                 painter.setBrush(preview_brush)
-                painter.setPen(QPen(Qt.NoPen))
+                painter.setPen(QPen(Qt.PenStyle.NoPen))
                 painter.drawRect(int(start_x), bar_y, int(end_x - start_x), TIMELINE_GROOVE_HEIGHT)
             
             # Imaginary cursor line at hover position
@@ -94,7 +94,7 @@ class TimelineSlider(QSlider):
             font = QFont("Arial", 11)  # same size as the bottom-left time label
             painter.setFont(font)
             fm = painter.fontMetrics()
-            text_width = fm.width(current_hover_time)
+            text_width = fm.horizontalAdvance(current_hover_time)
             text_height = fm.height()
             
             # Next to the hover cursor, same height as real time label
@@ -123,11 +123,11 @@ class ActionMarker(QWidget):
         super().__init__(parent)
         self.action = action_data
         self.setFixedSize(20, 20)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         font = QFont("Segoe UI Emoji", 14)
         if not font.exactMatch():
             font = QFont("Arial", 14)
@@ -146,10 +146,10 @@ class ActionMarker(QWidget):
         else:
             painter.setPen(QColor(0, 0, 0, 50))
         painter.setPen(QColor(255, 255, 255))
-        painter.drawText(self.rect(), Qt.AlignCenter, self.action['emoji'])
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.action['emoji'])
         
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.action['frame'])
 
 
@@ -204,7 +204,7 @@ class TimelineWidget(QWidget):
         time_layout.setContentsMargins(0, 8, 0, 0)  # extra bottom space
         
         self.time_label = QLabel("00:00")
-        self.time_label.setAlignment(Qt.AlignLeft)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.time_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
@@ -365,7 +365,7 @@ class ZoomedMarkersWidget(QFrame):
     
     def __init__(self, actions, center_frame, n_frames, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
         self.setMouseTracking(True)
         self.setFixedHeight(48)
         self.setMinimumWidth(220)
@@ -384,7 +384,7 @@ class ZoomedMarkersWidget(QFrame):
 
     def eventFilter(self, obj, event):
         # Handle focus loss to close automatically
-        if event.type() == QEvent.WindowDeactivate:
+        if event.type() == QEvent.Type.WindowDeactivate:
             # Optional: close automatically when losing focus
             # self.closeRequested.emit()
             pass
@@ -392,7 +392,7 @@ class ZoomedMarkersWidget(QFrame):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width = self.width()
         
         # --- Drawing the close button ---
@@ -442,12 +442,12 @@ class ZoomedMarkersWidget(QFrame):
             self.emoji_hitboxes.append((x_pos-20, x_pos+20, a['frame']))
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             # Click on the close button?
-            if hasattr(self, "cross_rect") and self.cross_rect.contains(event.pos()):
+            if hasattr(self, "cross_rect") and self.cross_rect.contains(event.position().toPoint()):
                 self.closeRequested.emit()
                 return
-            x = event.x()
+            x = int(event.position().x())
             for x_min, x_max, frame in self.emoji_hitboxes:
                 if x_min <= x <= x_max:
                     self.emojiClicked.emit(frame)
@@ -457,8 +457,10 @@ class ZoomedMarkersWidget(QFrame):
         """Ensure window stays within screen bounds"""
         super().showEvent(event)
         # Optional: adjust position if it goes off screen
-        screen = QApplication.desktop().screenGeometry()
-        if self.x() + self.width() > screen.width():
-            self.move(screen.width() - self.width() - 10, self.y())
-        if self.y() + self.height() > screen.height():
-            self.move(self.x(), screen.height() - self.height() - 10)
+        screen = QApplication.primaryScreen()
+        if screen:
+            sg = screen.availableGeometry()
+            if self.x() + self.width() > sg.width():
+                self.move(sg.width() - self.width() - 10, self.y())
+            if self.y() + self.height() > sg.height():
+                self.move(self.x(), sg.height() - self.height() - 10)

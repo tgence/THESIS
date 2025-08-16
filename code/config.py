@@ -11,9 +11,8 @@ This module defines:
 
 Only metadata and constants are defined here; no runtime logic.
 """
-# config.py
 
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 import os
 
 # Paths / Loading
@@ -176,5 +175,5 @@ LENGTH_FULL_TIME = LENGTH_FIRST_HALF + LENGTH_SECOND_HALF
 LENGTH_EXTRA_TIME = 2 * LENGTH_OVERTIME_HALF
 
 # Players and ball trajectories
-TRAJECTORY_STYLE = Qt.DotLine
+TRAJECTORY_STYLE = Qt.PenStyle.DotLine
 TRAJECTORY_SAMPLE_RATE = 5

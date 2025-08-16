@@ -5,10 +5,9 @@ Trajectory computation and rendering for players and ball.
 `TrajectoryManager` computes/draws future real trajectories and simulated ones,
 with temporal fading so upcoming segments are more visible than distant ones.
 """
-# trajectory.py 
 
-from PyQt5.QtGui import QPen, QColor, QBrush
-from PyQt5.QtCore import Qt
+from PyQt6.QtGui import QPen, QColor, QBrush
+from PyQt6.QtCore import Qt
 from collections import deque
 import numpy as np
 from config import *
@@ -170,9 +169,9 @@ class TrajectoryManager:
                             
                             # Very thin dashed line
                             pen = QPen(color, CONFIG.TRAJECTORY_PLAYER_LINE_WIDTH)
-                            pen.setStyle(Qt.CustomDashLine)
+                            pen.setStyle(Qt.PenStyle.CustomDashLine)
                             pen.setDashPattern([1, 4])
-                            pen.setCapStyle(Qt.RoundCap)
+                            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                             
                             line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
                             line.setZValue(8)
@@ -209,7 +208,7 @@ class TrajectoryManager:
                     
                     pen = QPen(color, CONFIG.TRAJECTORY_BALL_LINE_WIDTH)
                     pen.setStyle(TRAJECTORY_STYLE)
-                    pen.setCapStyle(Qt.RoundCap)
+                    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                     
                     line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
                     line.setZValue(95)
@@ -230,8 +229,8 @@ class TrajectoryManager:
                         final_ball = self.pitch_widget.scene.addEllipse(
                             final_x - final_radius, final_y - final_radius,
                             final_radius * 2, final_radius * 2,
-                            QPen(pen_color, 0.4, Qt.SolidLine),
-                            QBrush(Qt.NoBrush)
+                            QPen(pen_color, 0.4, Qt.PenStyle.SolidLine),
+                            QBrush(Qt.BrushStyle.NoBrush)
                         )
                         final_ball.setZValue(96)
                         self.pitch_widget.dynamic_items.append(final_ball)
@@ -289,8 +288,8 @@ class TrajectoryManager:
                     
                     # Thicker solid line for simulated path
                     pen = QPen(color, CONFIG.TRAJECTORY_PLAYER_LINE_WIDTH * 2)
-                    pen.setStyle(Qt.SolidLine)
-                    pen.setCapStyle(Qt.RoundCap)
+                    pen.setStyle(Qt.PenStyle.SolidLine)
+                    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                     
                     line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
                     line.setZValue(15)  # Above real trajectories
@@ -326,8 +325,8 @@ class TrajectoryManager:
                 
                 # Thicker line for the simulated ball
                 pen = QPen(color, CONFIG.TRAJECTORY_BALL_LINE_WIDTH * 2)
-                pen.setStyle(Qt.SolidLine)
-                pen.setCapStyle(Qt.RoundCap)
+                pen.setStyle(Qt.PenStyle.SolidLine)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
                 
                 line = self.pitch_widget.scene.addLine(x1, y1, x2, y2, pen)
                 line.setZValue(98)  # Above real ball trajectories
@@ -346,8 +345,8 @@ class TrajectoryManager:
                     final_ball = self.pitch_widget.scene.addEllipse(
                         final_x - final_radius, final_y - final_radius,
                         final_radius * 2, final_radius * 2,
-                        QPen(pen_color, 0.6, Qt.SolidLine),
-                        QBrush(Qt.NoBrush)
+                        QPen(pen_color, 0.6, Qt.PenStyle.SolidLine),
+                        QBrush(Qt.BrushStyle.NoBrush)
                     )
                     final_ball.setZValue(99)
                     self.pitch_widget.dynamic_items.append(final_ball)

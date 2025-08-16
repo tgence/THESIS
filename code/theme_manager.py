@@ -8,7 +8,6 @@ Generates two modes:
 - BLACK & WHITE: grayscale pitch adapted to team brightness; distinct chroma
   hues for offside and arrow to pop out
 """
-# theme_manager.py
 from typing import Dict
 from utils.color_utils import hex_to_lab, delta_e_lab, lch_to_hex, contrast_ratio, hex_to_lch, hex_to_rgb, relative_luminance
 from config import BALL_COLOR

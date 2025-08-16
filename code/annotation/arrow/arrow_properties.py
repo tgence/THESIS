@@ -5,14 +5,14 @@ Properties popup for a selected arrow.
 Allows choosing color/width/style and selecting from/to players, with a small
 undo/redo stack for property changes.
 """
-# arrow_properties.py
-from PyQt5.QtWidgets import (
+
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSpinBox, QButtonGroup, QRadioButton, QColorDialog, QFrame,
     QScrollArea
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 from annotation.arrow.arrow_player_selection import ArrowPlayerSelection
 from config import *
 import os
@@ -37,25 +37,27 @@ class PlayerCircleWidget(QWidget):
         self.sec_color = QColor(sec_color)
         self.num_color = QColor(num_color)
         self.setFixedSize(40, 40)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         painter.setBrush(QBrush(self.sec_color))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPie(2, 2, 36, 36, 0, 180 * 16)
         painter.setBrush(QBrush(self.main_color))
         painter.drawPie(2, 2, 36, 36, 180 * 16, 180 * 16)
         painter.setBrush(QBrush(self.main_color))
         painter.drawEllipse(8, 8, 24, 24)
         painter.setPen(QPen(self.num_color))
-        painter.setFont(QFont("Arial", 10, QFont.Bold))
-        painter.drawText(self.rect(), Qt.AlignCenter, self.number)
+        f = QFont("Arial", 10)
+        f.setBold(True)
+        painter.setFont(f)
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.number)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
 
 class ArrowProperties(QWidget):
@@ -73,7 +75,7 @@ class ArrowProperties(QWidget):
             Parent window (main UI).
         """
         super().__init__(parent)
-        self.setWindowFlags(Qt.Dialog | Qt.Window)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.Window)
         self.setWindowTitle("Arrow Properties") 
 
         # State
@@ -103,8 +105,8 @@ class ArrowProperties(QWidget):
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
@@ -120,7 +122,7 @@ class ArrowProperties(QWidget):
         self.from_player_widget = None
         layout.addLayout(self.from_container)
         separator1 = QFrame()
-        separator1.setFrameShape(QFrame.HLine)
+        separator1.setFrameShape(QFrame.Shape.HLine)
         separator1.setStyleSheet("color: #666;")
         layout.addWidget(separator1)
         # --- To ---
@@ -132,7 +134,7 @@ class ArrowProperties(QWidget):
         self.to_player_widget = None
         layout.addLayout(self.to_container)
         separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShape(QFrame.Shape.HLine)
         separator2.setStyleSheet("color: #666;")
         layout.addWidget(separator2)
         # --- Properties ---
@@ -278,7 +280,7 @@ class ArrowProperties(QWidget):
     def _on_color_changed(self):
         """Open a color dialog and record the color change to history."""
         color_dialog = QColorDialog(QColor(self.current_color), self)
-        if color_dialog.exec_() == QColorDialog.Accepted:
+        if color_dialog.exec() == QColorDialog.DialogCode.Accepted:
             color = color_dialog.selectedColor()    
             if color.isValid():
                 old_color = self.current_color
@@ -328,8 +330,8 @@ class ArrowProperties(QWidget):
         """Open a player selection dialog for 'from' or 'to'."""
         title = "From" if selection_type == "from" else "To"
         dialog = ArrowPlayerSelection(self.home_players, self.away_players, title, self)
-        result = dialog.exec_()
-        if result == dialog.Accepted:
+        result = dialog.exec()
+        if result == dialog.DialogCode.Accepted:
             player_id = dialog.selected_player_id
             player_text = dialog.selected_player_text
             

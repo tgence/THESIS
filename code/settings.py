@@ -7,14 +7,13 @@ Provides:
 - `ColorButton`: small helper widget to pick/show a color
 - `SettingsDialog`: non-modal dialog to adjust player scale and colors
 """
-# settings.py
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
     QPushButton, QColorDialog, QGroupBox, QGridLayout
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QColor
+from PyQt6.QtCore import pyqtSignal, QObject, Qt
+from PyQt6.QtGui import QColor
 from config import BALL_COLOR, CONFIG
 
 
@@ -190,7 +189,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings_manager = settings_manager
         self.setWindowTitle("Visual Settings")
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setModal(False)  # non-modal to see live changes
         self.setFixedSize(350, 400)
         
@@ -209,15 +208,15 @@ class SettingsDialog(QDialog):
         
         # Slider with labels
         slider_layout = QHBoxLayout()
-        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider = QSlider(Qt.Orientation.Horizontal)
         self.size_slider.setMinimum(50)   # 0.5x
         self.size_slider.setMaximum(200)  # 2.0x
-        self.size_slider.setTickPosition(QSlider.TicksBelow)
+        self.size_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.size_slider.setTickInterval(25)
         
         self.size_label = QLabel("1.0x")
         self.size_label.setFixedWidth(40)
-        self.size_label.setAlignment(Qt.AlignCenter)
+        self.size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         slider_layout.addWidget(QLabel("0.5x"))
         slider_layout.addWidget(self.size_slider)

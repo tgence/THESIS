@@ -1,17 +1,17 @@
+# arrow_player_selection.py
 """
 Player selection dialog for associating arrows to players.
 
 Provides circular player buttons styled like the pitch representation and a
 dialog that lists Home and Away players for quick selection.
 """
-# Player selection dialog styled like `PitchWidget`
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QFrame, QGridLayout
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPainterPath
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPainterPath
 from config import *
 
 class PlayerCircleButton(QPushButton):
@@ -43,7 +43,7 @@ class PlayerCircleButton(QPushButton):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Circle parameters (mirrors pitch_widget style)
         center_x, center_y = 25, 25
@@ -52,7 +52,7 @@ class PlayerCircleButton(QPushButton):
         
         # Top half-circle (main color)
         painter.setBrush(QBrush(self.main_color))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPie(center_x - outer_radius, center_y - outer_radius, 
                        outer_radius * 2, outer_radius * 2, 0, 180 * 16)
         
@@ -68,7 +68,7 @@ class PlayerCircleButton(QPushButton):
         
         # Selection ring if selected
         if self.is_selected:
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor("#39C6FF"), 2))  # light blue, width 2
             painter.drawEllipse(center_x - outer_radius - 2, center_y - outer_radius - 2, 
                             (outer_radius + 2) * 2, (outer_radius + 2) * 2)
@@ -76,9 +76,10 @@ class PlayerCircleButton(QPushButton):
         
         # Player number
         painter.setPen(QPen(self.num_color))
-        font = QFont("Arial", 12, QFont.Bold)
+        font = QFont("Arial", 12)
+        font.setBold(True)
         painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignCenter, self.player_number)
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.player_number)
     
     def set_selected(self, selected):
         """Update selection state"""
@@ -152,7 +153,7 @@ class ArrowPlayerSelection(QDialog):
         
         # Titre
         title_label = QLabel("Select a Player")
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_label)
         
         # Teams container
@@ -165,7 +166,7 @@ class ArrowPlayerSelection(QDialog):
         home_layout.setSpacing(10)
         
         home_label = QLabel("Home")
-        home_label.setAlignment(Qt.AlignCenter)
+        home_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         home_label.setStyleSheet(f"color: {self.home_main_color}; font-size: 16px; font-weight: bold;")
         home_layout.addWidget(home_label)
         
@@ -190,7 +191,7 @@ class ArrowPlayerSelection(QDialog):
         
         # Vertical separator
         separator = QFrame()
-        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShape(QFrame.Shape.VLine)
         separator.setStyleSheet("color: #666;")
         teams_layout.addWidget(separator)
         
@@ -200,7 +201,7 @@ class ArrowPlayerSelection(QDialog):
         away_layout.setSpacing(10)
         
         away_label = QLabel("Away")
-        away_label.setAlignment(Qt.AlignCenter)
+        away_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         away_label.setStyleSheet(f"color: {self.away_main_color}; font-size: 16px; font-weight: bold;")
         away_layout.addWidget(away_label)
         
@@ -313,6 +314,6 @@ class ArrowPlayerSelection(QDialog):
     def select_player(home_players, away_players, title="Select Player", parent=None):
         """Static method to select a player"""
         dialog = PlayerSelectionDialog(home_players, away_players, title, parent)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             return dialog.selected_player_id, dialog.selected_player_text
         return None, None

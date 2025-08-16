@@ -1,7 +1,8 @@
+# score_manager.py
+
 """
 Score extraction from events to display running score by frame.
 """
-# score_manager.py
 
 from config import *
 

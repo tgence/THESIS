@@ -20,7 +20,7 @@ from scipy.signal import savgol_filter
 from config import *
 
 
-from PyQt5.QtGui import QColor
+from PyQt6.QtGui import QColor
 
 def safe_color(val, fallback='#aaaaaa'):
     """Normalize strings into hex colors, falling back if invalid."""

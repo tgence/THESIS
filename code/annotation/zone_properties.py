@@ -5,15 +5,14 @@ Properties panels for tactical zones.
 Provides UI controls for modifying zone properties including color, width,
 transparency, and rotation.
 """
-# zone_properties.py
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, 
     QPushButton, QColorDialog, QSpinBox, QGroupBox, QGridLayout,
     QComboBox, QDoubleSpinBox, QFrame
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QIcon
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QColor, QIcon
 import os
 from config import *
 
@@ -90,7 +89,7 @@ class ZoneProperties(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Dialog | Qt.Window)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.Window)
         self.setWindowTitle("Zone Properties")
         self.current_zone = None
         self._setup_ui()
@@ -147,7 +146,7 @@ class ZoneProperties(QWidget):
         # Fill transparency
         alpha_layout = QHBoxLayout()
         alpha_layout.addWidget(QLabel("Opacity:"))
-        self.alpha_slider = QSlider(Qt.Horizontal)
+        self.alpha_slider = QSlider(Qt.Orientation.Horizontal)
         self.alpha_slider.setRange(0, 255)
         self.alpha_slider.setValue(0)
         self.alpha_slider.valueChanged.connect(self._on_alpha_changed)
